@@ -444,7 +444,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   constexpr bool linearTiling = false;
 #endif
   VkImage srcImg = vkutil::createImage(imgType, format, vkExtent, imgFlags,
-                                      1U /*mipLevels*/, linearTiling);
+                                       1U /*mipLevels*/, linearTiling);
   VkMemoryRequirements memReqs;
   auto srcMemIdx = vkutil::getImageMemoryTypeIndex(
       srcImg, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, memReqs);
@@ -478,53 +478,53 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
       i %= static_cast<uint64_t>(std::numeric_limits<DType>::max()) + 1;
     return static_cast<DType>(i);
   };
-#ifdef VERBOSE_PRINT
-  std::cout << "   ";
-  for (uint32_t x = 0; x < w; ++x) {
-    uint32_t x_m = x % 64;
-    if (x_m < 3 || x_m >= 61) std::cout << " " << std::setw(6) << x;
-  }
-#endif
+// #ifdef VERBOSE_PRINT
+//   std::cout << "   ";
+//   for (uint32_t x = 0; x < w; ++x) {
+//     uint32_t x_m = x % 64;
+//     if (x_m < 3 || x_m >= 61) std::cout << " " << std::setw(6) << x;
+//   }
+// #endif
   { DType *p = stagingData;
     for (size_t i = 0; i < numElems; ++i) {
+      DType v = getInputValue(i);
+/*
+#ifdef VERBOSE_PRINT
       uint32_t x = static_cast<uint32_t>(i % w);
       uint32_t y = static_cast<uint32_t>(i / w);
       uint32_t x_m = x % 64;
       uint32_t y_m = y % 32;
-      DType v = getInputValue(i);
-/*
-#ifdef VERBOSE_PRINT
-    if (y_m < 3 || y_m >= 29) {
-      if (x == 0) {
-        std::cout << "\n";
-        if (y_m == 0) {
-          std::cout << "   +";
-          if (sizeof(DType) * NChannels > 8) {
-            for (uint32_t x = 0; x < (w / 64); ++x) {
-              std::cout << "---------------------------------------------+";
-            }
-          }
-          else {
-            for (uint32_t x = 0; x < (w / 128); ++x) {
-              std::cout << "-------------------------------------------------------------------------------------------+";
-            }
-          }
+      if (y_m < 3 || y_m >= 29) {
+        if (x == 0) {
           std::cout << "\n";
+          if (y_m == 0) {
+            std::cout << "   +";
+            if (sizeof(DType) * NChannels > 8) {
+              for (uint32_t x = 0; x < (w / 64); ++x) {
+                std::cout << "---------------------------------------------+";
+              }
+            }
+            else {
+              for (uint32_t x = 0; x < (w / 128); ++x) {
+                std::cout << "-------------------------------------------------------------------------------------------+";
+              }
+            }
+            std::cout << "\n";
+          }
+          std::cout << std::setw(3) << y << "|" << std::setw(6) << v;
         }
-        std::cout << std::setw(3) << y << "|" << std::setw(6) << v;
-      }
-      else {
-        if (x_m < 3 || x_m >= 61) {
-          if (x_m == 0 && (x % 128 == 0 || sizeof(DType) * NChannels > 8))
-            std::cout << "|";
-          else std::cout << " ";
-          std::cout << std::setw(6) << v;
+        else {
+          if (x_m < 3 || x_m >= 61) {
+            if (x_m == 0 && (x % 128 == 0 || sizeof(DType) * NChannels > 8))
+              std::cout << "|";
+            else std::cout << " ";
+            std::cout << std::setw(6) << v;
+          }
+          else if (x_m == 3) std::cout << " ...";
+          if (x == w - 1) std::cout << "|";
         }
-        else if (x_m == 3) std::cout << " ...";
-        if (x == w - 1) std::cout << "|";
       }
-    }
-    else if (y_m < 6 && x == 0) std::cout << "\n . |   .";
+      else if (y_m < 6 && x == 0) std::cout << "\n . |   .";
 #endif  
 */
 // #ifdef VERBOSE_PRINT
