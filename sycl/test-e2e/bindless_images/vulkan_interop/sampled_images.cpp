@@ -166,9 +166,9 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
           sycl::nd_range<NDims>{syclDim, syclGrp},
           [=](sycl::nd_item<NDims> it) {
             if constexpr (NDims == 3) {
-              size_t z = it.get_global_id(0);
-              size_t y = it.get_global_id(1);
-              size_t x = it.get_global_id(2);
+              size_t z = it.get_global_id(0);  // SYCL uses dimension order depth,
+              size_t y = it.get_global_id(1);  //   height
+              size_t x = it.get_global_id(2);  //   width (flipped from Vulkan)
 
               // Normalize coordinates -- +0.5 to look towards centre of pixel
               sycl::float3 samp_pos{float(x + 0.5f) / (float)wdth,
@@ -180,8 +180,8 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
                                                           samp_pos);
               outAcc[sycl::id{z, y, x}] = pix / static_cast<OutType>(2);
             } else if constexpr (NDims == 2) {
-              size_t y  = it.get_global_id(0);
-              size_t x  = it.get_global_id(1);
+              size_t y = it.get_global_id(0);  // SYCL uses dimension order height,
+              size_t x = it.get_global_id(1);  //   width (flipped from Vulkan)
               // size_t sy = it.get_global_range(0);
               // size_t sx = it.get_global_range(1);
               // const char *py = (y < 10 ? "  " : (y < 100 ? " " : ""));
@@ -266,27 +266,28 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
     // return static_cast<OutType>(i / 2.0f);
     return static_cast<OutType>(i);
   };
-#ifdef VERBOSE_PRINT
-  bool prevMismatch = false;
-  VecType prevVal = out[0];
-  VecType prevExp = prevVal;
+// #ifdef VERBOSE_PRINT
+//   bool prevMismatch = false;
+//   VecType prevVal = out[0];
+//   VecType prevExp = prevVal;
 
-  std::cout << "   ";
-  for (uint32_t x = 0; x < wdth; ++x) {
-    uint32_t x_m = x % 64;
-    if (x_m < 3 || x_m >= 61) std::cout << " " << std::setw(6) << x;
-  }
-#endif
+//   std::cout << "   ";
+//   for (uint32_t x = 0; x < wdth; ++x) {
+//     uint32_t x_m = x % 64;
+//     if (x_m < 3 || x_m >= 61) std::cout << " " << std::setw(6) << x;
+//   }
+// #endif
 
   for (size_t i = 0; i < numElems; i++) {
-    uint32_t x = static_cast<uint32_t>(i % wdth);
-    uint32_t y = static_cast<uint32_t>(i / wdth);
-    uint32_t x_m = x % 64;
-    uint32_t y_m = y % 32;
+    // uint32_t x = static_cast<uint32_t>(i % wdth);
+    // uint32_t y = static_cast<uint32_t>(i / wdth);
+    // uint32_t x_m = x % 64;
+    // uint32_t y_m = y % 32;
     bool mismatch = false;
     VecType value = out[i];
     VecType expect =
         bindless_helpers::init_vector<OutType, NChannels>(getExpectedValue(i));
+/*
 #ifdef VERBOSE_PRINT
     if (y_m < 3 || y_m >= 29) {
       if (x == 0) {
@@ -318,6 +319,7 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
     }
     else if (y_m < 6 && x == 0) std::cout << "\n . |   .";
 #endif  
+*/
     if (!bindless_helpers::equal_vec<OutType, NChannels>(value, expect)) {
       mismatch = true;
       validated = false;
@@ -490,6 +492,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
       uint32_t x_m = x % 64;
       uint32_t y_m = y % 32;
       DType v = getInputValue(i);
+/*
 #ifdef VERBOSE_PRINT
     if (y_m < 3 || y_m >= 29) {
       if (x == 0) {
@@ -523,6 +526,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
     }
     else if (y_m < 6 && x == 0) std::cout << "\n . |   .";
 #endif  
+*/
 // #ifdef VERBOSE_PRINT
 //       uint32_t y = i / w;
 //       uint32_t x = i % w;
@@ -733,324 +737,324 @@ bool run_tests() {
   //              ({16, 16}, {2, 2});
 
   // ******** Debug test cases: Commented test cases fail ********
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_16_22>
-  //              ({8, 16}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_16_44>
-  //              ({8, 16}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_16_22>
+               ({8, 16}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_16_44>
+               ({8, 16}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_24_22>
-  //              ({8, 24}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_24_44>
-  //              ({8, 24}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_24_22>
+               ({8, 24}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_24_44>
+               ({8, 24}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_10_16_22>
-  // //              ({10, 16}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_10_16_22>
+  //              ({10, 16}, {2, 2});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_12_16_22>
-  // //              ({12, 16}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_12_16_22>
+  //              ({12, 16}, {2, 2});
 
-  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_16_16_22>
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_16_16_22>
+               ({16, 16}, {2, 2});
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_16_16_44>
+               ({16, 16}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_16_22>
   //              ({16, 16}, {2, 2});
-  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_16_16_44>
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_16_44>
   //              ({16, 16}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_16_22>
-  // //              ({16, 16}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_16_44>
-  // //              ({16, 16}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_18_22>
-  //              ({16, 18}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_18_42>
-  //              ({16, 18}, {4, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_18_22>
+               ({16, 18}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_18_42>
+               ({16, 18}, {4, 2});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_22>
-  //              ({16, 20}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_24>
-  //              ({16, 20}, {2, 4});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_42>
-  //              ({16, 20}, {4, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_44>
-  //              ({16, 20}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_22>
+               ({16, 20}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_24>
+               ({16, 20}, {2, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_42>
+               ({16, 20}, {4, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_44>
+               ({16, 20}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_22>
-  //              ({16, 24}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_24>
-  //              ({16, 24}, {2, 4});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_42>
-  //              ({16, 24}, {4, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_44>
-  //              ({16, 24}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_22>
+               ({16, 24}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_24>
+               ({16, 24}, {2, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_42>
+               ({16, 24}, {4, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_44>
+               ({16, 24}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_32_22>
-  //              ({16, 32}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_32_44>
-  //              ({16, 32}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_32_22>
+               ({16, 32}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_32_44>
+               ({16, 32}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_16_22>
-  // //              ({20, 16}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_16_44>
-  // //              ({20, 16}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_16_22>
+  //              ({20, 16}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_16_44>
+  //              ({20, 16}, {4, 4});
 
-  // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_20_20_22>
+  valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_20_20_22>
+               ({20, 20}, {2, 2});
+  valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_20_20_44>
+               ({20, 20}, {4, 4});
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_20_20_22>
+               ({20, 20}, {2, 2});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_20_20_22>
   //              ({20, 20}, {2, 2});
-  // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_20_20_44>
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_20_20_44>
   //              ({20, 20}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_20_20_22>
-  // //              ({20, 20}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_20_20_22>
-  // //              ({20, 20}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_20_20_44>
-  // //              ({20, 20}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_20_22>
-  // //              ({20, 20}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_20_44>
-  // //              ({20, 20}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_20_22>
+  //              ({20, 20}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_20_44>
+  //              ({20, 20}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_40_22>
-  // //              ({16, 40}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_40_44>
-  // //              ({16, 40}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_40_22>
+  //              ({16, 40}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_40_44>
+  //              ({16, 40}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_48_22>
-  // //              ({16, 48}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_48_24>
-  // //              ({16, 48}, {2, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_48_48>
-  // //              ({16, 48}, {4, 8});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_48_22>
+  //              ({16, 48}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_48_24>
+  //              ({16, 48}, {2, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_48_48>
+  //              ({16, 48}, {4, 8});
 
-  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_24_24_22>
-  //              ({24, 24}, {2, 2});
-  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_24_24_44>
-  //              ({24, 24}, {4, 4});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_24_22>
-  //              ({24, 24}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_24_44>
-  //              ({24, 24}, {4, 4});
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_24_24_22>
+               ({24, 24}, {2, 2});
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_24_24_44>
+               ({24, 24}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_24_22>
+               ({24, 24}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_24_44>
+               ({24, 24}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_32_22>
-  //              ({24, 32}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_32_44>
-  //              ({24, 32}, {4, 4});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_32_88>
-  //              ({24, 32}, {8, 8});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_32_22>
+               ({24, 32}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_32_44>
+               ({24, 32}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_32_88>
+               ({24, 32}, {8, 8});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_40_22>
-  // //              ({24, 40}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_40_44>
-  // //              ({24, 40}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_40_88>
-  // //              ({24, 40}, {8, 8});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_40_22>
+  //              ({24, 40}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_40_44>
+  //              ({24, 40}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_40_88>
+  //              ({24, 40}, {8, 8});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_48_22>
-  // //              ({24, 48}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_48_44>
-  // //              ({24, 48}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_48_88>
-  // //              ({24, 48}, {8, 8});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_48_22>
+  //              ({24, 48}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_48_44>
+  //              ({24, 48}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_48_88>
+  //              ({24, 48}, {8, 8});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_24_22>
-  // //              ({32, 24}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_24_22>
+  //              ({32, 24}, {2, 2});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_16_22>
-  // //              ({32, 16}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_16_44>
-  // //              ({32, 16}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_16_88>
-  // //              ({32, 16}, {8, 8});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_16_22>
+  //              ({32, 16}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_16_44>
+  //              ({32, 16}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_16_88>
+  //              ({32, 16}, {8, 8});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_32_22>
-  //              ({32, 32}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_32_44>
-  //              ({32, 32}, {4, 4});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_32_88>
-  //              ({32, 32}, {8, 8});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_32_22>
+               ({32, 32}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_32_44>
+               ({32, 32}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_32_88>
+               ({32, 32}, {8, 8});
 
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_32_64_22>
-  // //              ({32, 64}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_64_22>
-  // //              ({32, 64}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_64_44>
-  // //              ({32, 64}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_64_88>
-  // //              ({32, 64}, {8, 8});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_32_64_22>
+  //              ({32, 64}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_64_22>
+  //              ({32, 64}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_64_44>
+  //              ({32, 64}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_64_88>
+  //              ({32, 64}, {8, 8});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_96_22>
-  // //              ({32, 96}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_96_44>
-  // //              ({32, 96}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_96_88>
-  // //              ({32, 96}, {8, 8});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_96_22>
+  //              ({32, 96}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_96_44>
+  //              ({32, 96}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_96_88>
+  //              ({32, 96}, {8, 8});
 
-  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_24_22>
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_24_22>
+               ({48, 24}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_24_22>
   //              ({48, 24}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_24_22>
-  // //              ({48, 24}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_24_44>
-  // //              ({48, 24}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_24_44>
+  //              ({48, 24}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_32_22>
-  //              ({48, 32}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_32_44>
-  //              ({48, 32}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_32_22>
+               ({48, 32}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_32_44>
+               ({48, 32}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_48_22>
-  // //              ({48, 48}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_48_22>
-  // //              ({48, 48}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_48_44>
-  // //              ({48, 48}, {4, 4});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_48_22>
+  //              ({48, 48}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_48_22>
+  //              ({48, 48}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_48_44>
+  //              ({48, 48}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_64_22>
-  // //              ({48, 64}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_64_22>
-  // //              ({48, 64}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_64_44>
-  // //              ({48, 64}, {4, 4});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_64_22>
+  //              ({48, 64}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_64_22>
+  //              ({48, 64}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_64_44>
+  //              ({48, 64}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_96_22>
-  // //              ({48, 96}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_96_22>
-  // //              ({48, 96}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_96_44>
-  // //              ({48, 96}, {4, 4});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_96_22>
+  //              ({48, 96}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_96_22>
+  //              ({48, 96}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_96_44>
+  //              ({48, 96}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_128_22>
-  // //              ({48, 128}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_128_22>
-  // //              ({48, 128}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_128_44>
-  // //              ({48, 128}, {4, 4});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_128_22>
+  //              ({48, 128}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_128_22>
+  //              ({48, 128}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_128_44>
+  //              ({48, 128}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_32_22>
-  //              ({64, 32}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_32_44>
-  //              ({64, 32}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_32_22>
+               ({64, 32}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_32_44>
+               ({64, 32}, {4, 4});
 
-  // // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_48_22>
-  // //              ({64, 48}, {2, 2});
-  // // valid &= run_test<2, int16_t, 4, sycl_sint16, sycl_rgba, class int16_2d_c4_64_48_22>
-  // //              ({64, 48}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_64_48_22>
-  // //              ({64, 48}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_48_22>
-  // //              ({64, 48}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_48_44>
-  // //              ({64, 48}, {4, 4});
+  // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_48_22>
+  //              ({64, 48}, {2, 2});
+  // valid &= run_test<2, int16_t, 4, sycl_sint16, sycl_rgba, class int16_2d_c4_64_48_22>
+  //              ({64, 48}, {2, 2});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_64_48_22>
+  //              ({64, 48}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_48_22>
+  //              ({64, 48}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_48_44>
+  //              ({64, 48}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_64_22>
-  //              ({64, 64}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_64_44>
-  //              ({64, 64}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_64_22>
+               ({64, 64}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_64_44>
+               ({64, 64}, {4, 4});
 
-  // // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_80_22>
-  // //              ({64, 80}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_64_80_22>
-  // //              ({64, 80}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_80_22>
-  // //              ({64, 80}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_80_44>
-  // //              ({64, 80}, {4, 4});
+  // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_80_22>
+  //              ({64, 80}, {2, 2});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_64_80_22>
+  //              ({64, 80}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_80_22>
+  //              ({64, 80}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_80_44>
+  //              ({64, 80}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_96_22>
-  //              ({64, 96}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_96_44>
-  //              ({64, 96}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_96_22>
+               ({64, 96}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_96_44>
+               ({64, 96}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_128_22>
-  //              ({64, 128}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_128_44>
-  //              ({64, 128}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_128_22>
+               ({64, 128}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_128_44>
+               ({64, 128}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_160_22>
-  //              ({64, 160}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_160_44>
-  //              ({64, 160}, {4, 4});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_160_44>
-  //              ({64, 160}, {8, 8});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_160_22>
+               ({64, 160}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_160_44>
+               ({64, 160}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_160_44>
+               ({64, 160}, {8, 8});
 
-  // // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_176_44>
-  // //              ({64, 176}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_64_176_44>
-  // //              ({64, 176}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_176_22>
-  // //              ({64, 176}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_176_44>
-  // //              ({64, 176}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_176_44>
-  // //              ({64, 176}, {8, 8});
+  // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_176_44>
+  //              ({64, 176}, {4, 4});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_64_176_44>
+  //              ({64, 176}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_176_22>
+  //              ({64, 176}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_176_44>
+  //              ({64, 176}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_176_44>
+  //              ({64, 176}, {8, 8});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_192_22>
-  //              ({64, 192}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_192_44>
-  //              ({64, 192}, {4, 4});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_192_44>
-  //              ({64, 192}, {8, 8});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_192_22>
+               ({64, 192}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_192_44>
+               ({64, 192}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_192_44>
+               ({64, 192}, {8, 8});
 
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_256_22>
-  //              ({64, 256}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_256_44>
-  //              ({64, 256}, {4, 4});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_256_44>
-  //              ({64, 256}, {8, 8});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_256_22>
+               ({64, 256}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_256_44>
+               ({64, 256}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_256_44>
+               ({64, 256}, {8, 8});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_72_256_22>
-  // //              ({72, 256}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_72_256_44>
-  // //              ({72, 256}, {4, 4});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_72_256_44>
-  // //              ({72, 256}, {8, 8});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_72_256_22>
+  //              ({72, 256}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_72_256_44>
+  //              ({72, 256}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_72_256_44>
+  //              ({72, 256}, {8, 8});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_80_22>
-  // //              ({80, 80}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_80_44>
-  // //              ({80, 80}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_80_22>
+  //              ({80, 80}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_80_44>
+  //              ({80, 80}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_96_22>
-  // //              ({80, 96}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_96_44>
-  // //              ({80, 96}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_96_22>
+  //              ({80, 96}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_96_44>
+  //              ({80, 96}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_128_22>
-  // //              ({80, 128}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_128_44>
-  // //              ({80, 128}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_128_22>
+  //              ({80, 128}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_128_44>
+  //              ({80, 128}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_96_22>
-  // //              ({96, 96}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_96_44>
-  // //              ({96, 96}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_96_22>
+  //              ({96, 96}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_96_44>
+  //              ({96, 96}, {4, 4});
 
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_128_22>
-  // //              ({96, 128}, {2, 2});
-  // // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_128_44>
-  // //              ({96, 128}, {4, 4});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_128_22>
+  //              ({96, 128}, {2, 2});
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_128_44>
+  //              ({96, 128}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_128_128_22>
-  //              ({128, 128}, {2, 2});
-  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_128_128_22>
-  //              ({128, 128}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_128_22>
-  //              ({128, 128}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_128_44>
-  //              ({128, 128}, {4, 4});
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_128_128_22>
+               ({128, 128}, {2, 2});
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_128_128_22>
+               ({128, 128}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_128_22>
+               ({128, 128}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_128_44>
+               ({128, 128}, {4, 4});
 
-  // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_128_256_22>
-  //              ({128, 256}, {2, 2});
-  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_128_256_22>
-  //              ({128, 256}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_256_22>
-  //              ({128, 256}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_256_44>
-  //              ({128, 256}, {4, 4});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_256_44>
-  //              ({128, 256}, {8, 8});
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_128_256_22>
+               ({128, 256}, {2, 2});
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_128_256_22>
+               ({128, 256}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_256_22>
+               ({128, 256}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_256_44>
+               ({128, 256}, {4, 4});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_256_44>
+               ({128, 256}, {8, 8});
 
-  // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_256_256_22>
-  //              ({256, 256}, {2, 2});
-  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_256_256_22>
-  //              ({256, 256}, {2, 2});
-  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_256_256_22>
-  //              ({256, 256}, {2, 2});
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_256_256_22>
+               ({256, 256}, {2, 2});
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_256_256_22>
+               ({256, 256}, {2, 2});
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_256_256_22>
+               ({256, 256}, {2, 2});
 
   valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_512_256_22>
                ({512, 256}, {2, 2});
