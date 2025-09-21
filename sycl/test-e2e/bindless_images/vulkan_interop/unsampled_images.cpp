@@ -8,14 +8,19 @@
 // Uncomment to print additional test information
 // #define VERBOSE_PRINT
 
+#include <random>
+
 #include "../../CommonUtils/vulkan_common.hpp"
 #include "../helpers/common.hpp"
+#include "utils.hpp"
+
 #include <sycl/properties/queue_properties.hpp>
 
-#include <random>
 #include <sycl/ext/oneapi/bindless_images.hpp>
 
 namespace syclexp = sycl::ext::oneapi::experimental;
+
+using namespace sycl_vulkan_img_utils;
 
 // Helpers and utilities
 namespace util {
@@ -29,6 +34,7 @@ struct handles_t {
   syclexp::unsampled_image_handle input_1, input_2, output;
 };
 
+//----------------------------------------------------------------------------//
 template <typename InteropMemHandleT, typename InteropSemHandleT>
 handles_t create_test_handles(
     sycl::context &ctxt, sycl::device &dev,
@@ -135,7 +141,7 @@ handles_t create_test_handles(
           input_2,
           output};
 }
-
+//----------------------------------------------------------------------------//
 void cleanup_test(sycl::context &ctxt, sycl::device &dev, handles_t handles) {
 #ifdef TEST_SEMAPHORE_IMPORT
   syclexp::release_external_semaphore(handles.sycl_wait_external_semaphore, dev,
@@ -156,7 +162,7 @@ void cleanup_test(sycl::context &ctxt, sycl::device &dev, handles_t handles) {
   syclexp::release_external_memory(handles.input_external_mem_2, dev, ctxt);
   syclexp::release_external_memory(handles.output_external_mem, dev, ctxt);
 }
-
+//----------------------------------------------------------------------------//
 template <typename InteropMemHandleT, typename InteropSemHandleT, int NDims,
           typename DType, sycl::image_channel_type CType, int NChannels,
           typename KernelName>
@@ -267,40 +273,36 @@ void run_ndim_test(sycl::range<NDims> global_size,
     exit(-1);
   }
 }
+//----------------------------------------------------------------------------//
 } // namespace util
 
+//----------------------------------------------------------------------------//
 template <int NDims, typename DType, int NChannels,
           sycl::image_channel_type CType, sycl::image_channel_order COrder,
           typename KernelName>
-bool run_test(sycl::range<NDims> dims, sycl::range<NDims> local_size,
-              unsigned int seed = 0) {
+bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
   uint32_t width = static_cast<uint32_t>(dims[0]);
   uint32_t height = 1;
   uint32_t depth = 1;
+  uint32_t w = dims.wdth;
+  uint32_t h = dims.hght;
+  uint32_t d = dims.dpth;
+  VkExtent3D vkExtent = {w, h, d};
 
-  size_t num_elems = dims[0];
-  VkImageType imgType = VK_IMAGE_TYPE_1D;
-
-  if (NDims > 1) {
-    num_elems *= dims[1];
-    height = static_cast<uint32_t>(dims[1]);
-    imgType = VK_IMAGE_TYPE_2D;
-  }
-  if (NDims > 2) {
-    num_elems *= dims[2];
-    depth = static_cast<uint32_t>(dims[2]);
-    imgType = VK_IMAGE_TYPE_3D;
-  }
+  size_t num_elems = dims.num_elems();
+  constexpr VkImageType imgTypes[] = {VK_IMAGE_TYPE_1D, VK_IMAGE_TYPE_2D,
+                                      VK_IMAGE_TYPE_3D};
+  constexpr VkImageType imgType = imgTypes[NDims - 1];
 
   VkFormat format = vkutil::to_vulkan_format(COrder, CType);
-  const size_t imageSizeBytes = num_elems * NChannels * sizeof(DType);
+  const size_t imgBytes = num_elems * NChannels * sizeof(DType);
 
   vkutil::vulkan_image_test_resources_t inVkImgRes1(
-      imgType, format, {width, height, depth}, imageSizeBytes);
+      imgType, format, vkExtent, imgBytes);
   vkutil::vulkan_image_test_resources_t inVkImgRes2(
-      imgType, format, {width, height, depth}, imageSizeBytes);
+      imgType, format, vkExtent, imgBytes);
   vkutil::vulkan_image_test_resources_t outVkImgRes(
-      imgType, format, {width, height, depth}, imageSizeBytes);
+      imgType, format, vkExtent, imgBytes);
 
   printString("Populating staging buffer\n");
   // Populate staging memory
@@ -311,7 +313,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> local_size,
 
   DType *inputStagingData = nullptr;
   VK_CHECK_CALL(vkMapMemory(vk_device, inVkImgRes1.stagingMemory, 0 /*offset*/,
-                            imageSizeBytes, 0 /*flags*/,
+                            imgBytes, 0 /*flags*/,
                             (void **)&inputStagingData));
   for (int i = 0; i < (num_elems * NChannels); ++i) {
     inputStagingData[i] = input_vector_0[i];
@@ -324,7 +326,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> local_size,
   bindless_helpers::fill_rand(input_vector_1);
 
   VK_CHECK_CALL(vkMapMemory(vk_device, inVkImgRes2.stagingMemory, 0 /*offset*/,
-                            imageSizeBytes, 0 /*flags*/,
+                            imgBytes, 0 /*flags*/,
                             (void **)&inputStagingData));
   for (int i = 0; i < (num_elems * NChannels); ++i) {
     inputStagingData[i] = input_vector_1[i];
@@ -536,7 +538,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> local_size,
   bool validated = true;
   DType *outputStagingData = nullptr;
   VK_CHECK_CALL(vkMapMemory(vk_device, outVkImgRes.stagingMemory, 0 /*offset*/,
-                            imageSizeBytes, 0 /*flags*/,
+                            imgBytes, 0 /*flags*/,
                             (void **)&outputStagingData));
 
   for (int i = 0; i < (num_elems * NChannels); ++i) {
@@ -567,7 +569,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> local_size,
 
   return validated;
 }
-
+//----------------------------------------------------------------------------//
 bool run_all() {
   unsigned int seed = 0;
   bool valid = true;
@@ -668,7 +670,7 @@ bool run_all() {
 #endif
   return valid;
 }
-
+//----------------------------------------------------------------------------//
 int main() {
 
   if (vkutil::setupInstance() != VK_SUCCESS) {
@@ -703,3 +705,4 @@ int main() {
   std::cerr << "Test failed\n";
   return EXIT_FAILURE;
 }
+//----------------------------------------------------------------------------//

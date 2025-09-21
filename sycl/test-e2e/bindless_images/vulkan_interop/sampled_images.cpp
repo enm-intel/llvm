@@ -14,102 +14,14 @@
 
 #include "../../CommonUtils/vulkan_common.hpp"
 #include "../helpers/common.hpp"
+#include "utils.hpp"
 
 #include <sycl/sycl.hpp>
 #include <sycl/ext/oneapi/bindless_images.hpp>
 
 namespace syclexp = sycl::ext::oneapi::experimental;
 
-// clang-format off
-// Some commonly used channel types
-constexpr sycl::image_channel_type sycl_unorm8 = sycl::image_channel_type::unorm_int8;
-constexpr sycl::image_channel_type sycl_sint8  = sycl::image_channel_type::signed_int8;
-constexpr sycl::image_channel_type sycl_half   = sycl::image_channel_type::fp16;
-constexpr sycl::image_channel_type sycl_sint16 = sycl::image_channel_type::signed_int16;
-constexpr sycl::image_channel_type sycl_sint32 = sycl::image_channel_type::signed_int32;
-constexpr sycl::image_channel_type sycl_uint32 = sycl::image_channel_type::unsigned_int32;
-constexpr sycl::image_channel_type sycl_float  = sycl::image_channel_type::fp32;
-
-constexpr sycl::image_channel_order sycl_r    = sycl::image_channel_order::r;
-constexpr sycl::image_channel_order sycl_rg   = sycl::image_channel_order::rg;
-constexpr sycl::image_channel_order sycl_rgb  = sycl::image_channel_order::rgb;
-constexpr sycl::image_channel_order sycl_rgba = sycl::image_channel_order::rgba;
-// clang-format on
-
-//----------------------------------------------------------------------------//
-template <typename T> 
-inline constexpr uint32_t to_u32(T val) { return static_cast<uint32_t>(val); }
-//----------------------------------------------------------------------------//
-
-//-==========================================================================-//
-template <uint32_t Dims = 1>
-class Dims3D {
-private:
-  static_assert(Dims >= 1 && Dims <= 3,
-                "Dimensions must be only 1, 2, or 3.");
-
-public:
-  static constexpr int dimensions = Dims;
-  using sycl_range_t = sycl::range<Dims>;
-
-  uint32_t wdth{1};
-  uint32_t hght{1};
-  uint32_t dpth{1};
-
-  Dims3D() = default;
-  Dims3D(const Dims3D<Dims> &rhs) = default;
-  Dims3D(Dims3D<Dims> &&rhs) = default;
-
-  // The following constructor is only available when Dims==1
-  template <int N = Dims>
-  Dims3D(typename std::enable_if_t<(N == 1), uint32_t> wdth) :
-      wdth{wdth}, hght{1}, dpth{1} {}
-
-  // The following constructor is only available when Dims==2
-  template <int N = Dims>
-  Dims3D(typename std::enable_if_t<(N == 2), uint32_t> wdth, uint32_t hght) :
-      wdth{wdth}, hght{hght}, dpth{1} {}
-
-  // The following constructor is only available when Dims==3
-  template <int N = Dims>
-  Dims3D(typename std::enable_if_t<(N == 3), uint32_t> wdth, uint32_t hght,
-         uint32_t dpth) : wdth{wdth}, hght{hght}, dpth{dpth} {}
-
-  // Construct from Vulkan VkExtent3D
-  Dims3D(const VkExtent3D &ext) : wdth{ext.width}, hght{ext.height},
-                                  dpth{ext.depth} {}
-
-  // clang-format off
-  // Compute total number of elements.
-  size_t size() const {
-    if      constexpr (Dims == 1) return static_cast<size_t>(wdth);
-    else if constexpr (Dims == 2) return static_cast<size_t>(wdth) * hght;
-    return static_cast<size_t>(wdth) * hght * dpth;
-  } 
-  size_t num_elems() const { return size(); }
-
-  // Convert to Vulkan VkExtent3D
-  operator VkExtent3D() const { return {wdth, hght, dpth}; }
-
-  // Convert to sycl::range<Dims>
-  // If flip is true, the order of dimensions is reversed.
-  template <bool flip = false>
-  sycl_range_t to_sycl_range() const {
-    if constexpr (Dims == 1) return sycl_range_t{wdth};
-    else if constexpr (flip) {
-      if constexpr (Dims == 2) return sycl_range_t{hght, wdth};
-      else                     return sycl_range_t{dpth, hght, wdth};
-    }
-    else {
-      if constexpr (Dims == 2) return sycl_range_t{wdth, hght};
-      else                     return sycl_range_t{wdth, hght, dpth};
-    }
-  }
-  // Convert to sycl::range<Dims> with flipped dimensions.
-  sycl_range_t to_flip_range() const { return to_sycl_range<true>(); }
-  // clang-format on
-};
-//-==========================================================================-//
+using namespace sycl_vulkan_img_utils;
 
 //-==========================================================================-//
 struct handles_t {
@@ -427,13 +339,13 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
     return true;
   }
 
-  size_t numElems = dims.size();
+  size_t numElems = dims.num_elems();
   constexpr VkImageType imgTypes[] = {VK_IMAGE_TYPE_1D, VK_IMAGE_TYPE_2D,
                                       VK_IMAGE_TYPE_3D};
   constexpr VkImageType imgType = imgTypes[NDims - 1];
 
   VkFormat format = vkutil::to_vulkan_format(COrder, CType);
-  const size_t imageSizeBytes = numElems * NChannels * sizeof(DType);
+  const size_t imgBytes = numElems * NChannels * sizeof(DType);
 
   printString("Creating input image:");
 #ifdef VERBOSE_PRINT
@@ -444,11 +356,11 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   std::cout << "\t# elements: " << numElems << "\n";
   std::cout << "\t# channels: " << NChannels << "\n";
   std::cout << "\telem size : " << sizeof(DType) << "\n";
-  std::cout << "\t# bytes   : " << imageSizeBytes << "\n";
+  std::cout << "\t# bytes   : " << imgBytes << "\n";
 #endif
 
   // Create input image memory
-   constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+  constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                                        VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 #ifdef ENABLE_LINEAR_TILING
   constexpr bool linearTiling = true;
@@ -461,20 +373,20 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   auto inputImageMemoryTypeIndex = vkutil::getImageMemoryTypeIndex(
       inputImage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, memRequirements);
   auto inputMemory = vkutil::allocateDeviceMemory(
-      imageSizeBytes, inputImageMemoryTypeIndex, inputImage);
+      imgBytes, inputImageMemoryTypeIndex, inputImage);
   VK_CHECK_CALL(vkBindImageMemory(vk_device, inputImage, inputMemory,
                                   0 /*memoryOffset*/));
 
   printString("Creating staging buffers");
   // Create input staging memory
   auto inputStagingBuffer = vkutil::createBuffer(
-      imageSizeBytes,
+      imgBytes,
       VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
   auto inputStagingMemoryTypeIndex = vkutil::getBufferMemoryTypeIndex(
       inputStagingBuffer, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   auto inputStagingMemory =
-      vkutil::allocateDeviceMemory(imageSizeBytes, inputStagingMemoryTypeIndex,
+      vkutil::allocateDeviceMemory(imgBytes, inputStagingMemoryTypeIndex,
                                    nullptr /*image*/, false /*exportable*/);
   VK_CHECK_CALL(vkBindBufferMemory(vk_device, inputStagingBuffer,
                                    inputStagingMemory, 0 /*memoryOffset*/));
@@ -483,7 +395,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   // Populate staging memory
   DType *inputStagingData = nullptr;
   VK_CHECK_CALL(vkMapMemory(vk_device, inputStagingMemory, 0 /*offset*/,
-                            imageSizeBytes, 0 /*flags*/,
+                            imgBytes, 0 /*flags*/,
                             (void **)&inputStagingData));
   auto getInputValue = [&](uint64_t i) -> DType {
     // if (CType == sycl_unorm8)
