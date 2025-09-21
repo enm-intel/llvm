@@ -30,9 +30,9 @@ template <typename DType, sycl::image_channel_type CType> struct OutputType {
   using type = DType;
 };
 
-template <> struct OutputType<uint8_t, sycl::image_channel_type::unorm_int8> {
-  using type = float;
-};
+// template <> struct OutputType<uint8_t, sycl::image_channel_type::unorm_int8> {
+//   using type = float;
+// };
 
 template <typename InteropHandleT, typename InteropSemHandleT>
 handles_t create_test_handles(
@@ -149,6 +149,8 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
   std::cout << "\t# channels: " << NChannels << "\n";
   std::cout << "\telem size : " << sizeof(OutType) << " --> channel size: " << sizeof(VecType) << "\n";
   std::cout << "\t# bytes   : " << numElems * sizeof(VecType) << "\n";
+  if (sizeof(DType) != sizeof(OutType))
+    std::cout << "\t***** NOTE: Output data type different from image data type *****\n";
 #endif
   try {
     sycl::buffer<VecType, NDims> buf((VecType *)out.data(), outBufferRange);
@@ -174,7 +176,7 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
                   std::conditional_t<NChannels == 1, OutType, VecType>>(
                   handles.imgInput, sycl::float3(fdim0, fdim1, fdim2));
 
-              pixel /= static_cast<OutType>(2.f);
+              pixel /= static_cast<OutType>(2);
               outAcc[sycl::id{dim2, dim1, dim0}] = pixel;
             } else if constexpr (NDims == 2) {
               size_t dim0 = it.get_global_id(0);
@@ -190,7 +192,19 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
                   handles.imgInput, sycl::float2(fdim0, fdim1));
 
               pixel /= static_cast<OutType>(2);
-              if constexpr (NChannels < 4 || CType != sycl::image_channel_type::fp32) {
+              // outAcc[sycl::id{dim1, dim0}] = pixel;
+
+              if constexpr (NChannels == 4 && CType == sycl::image_channel_type::fp32) {
+                size_t idx = outAcc.getIndex(sycl::id{dim1, dim0});
+                // VecType *ptr = reinterpret_cast<VecType *>(outAcc.getPtr());
+                if (idx < width) {
+                  // outAcc[sycl::id{dim1, dim0}] = pixel;
+                }
+                else {
+                  // std::cout << "Skipping kernel index " << idx << "\n";
+                }
+              }
+              else {
                 outAcc[sycl::id{dim1, dim0}] = pixel;
               }
             } else {
@@ -204,7 +218,7 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
                   std::conditional_t<NChannels == 1, OutType, VecType>>(
                   handles.imgInput, fdim0);
 
-              pixel /= static_cast<OutType>(2.f);
+              pixel /= static_cast<OutType>(2);
               outAcc[dim0] = pixel;
             }
           });
@@ -233,11 +247,11 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
   bool validated = true;
   auto getExpectedValue = [&](int i) -> OutType {
     if (CType == sycl::image_channel_type::unorm_int8)
-      return 0.5f;
+      return static_cast<OutType>(0.5f);
     if constexpr (std::is_integral_v<OutType> ||
                   std::is_same_v<OutType, sycl::half>)
       i = i % static_cast<uint64_t>(std::numeric_limits<OutType>::max());
-    return i / 2.f;
+    return static_cast<OutType>(i / 2.f);
   };
   for (int i = 0; i < globalSize.size(); i++) {
     bool mismatch = false;
@@ -603,7 +617,7 @@ bool run_tests() {
 
   valid &= run_test<2, float, 4, sycl::image_channel_type::fp32,
                     sycl::image_channel_order::rgba, class float_2d_c4>({16, 16},
-                                                                        {2, 2}, 0);
+                                                                        {4, 4}, 0);
 
   // valid &= run_test<2, float, 4, sycl::image_channel_type::fp32,
   //                   sycl::image_channel_order::rgba, class float_2d>({16, 16},

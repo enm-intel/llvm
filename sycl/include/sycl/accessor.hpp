@@ -1750,6 +1750,13 @@ public:
   template <int Dims = Dimensions,
             typename = std::enable_if_t<(Dims > 0) &&
                                         (IsAccessAnyWrite || IsAccessReadOnly)>>
+  size_t getIndex(id<Dimensions> Index) const {
+    return getLinearIndex(Index);
+  }
+
+  template <int Dims = Dimensions,
+            typename = std::enable_if_t<(Dims > 0) &&
+                                        (IsAccessAnyWrite || IsAccessReadOnly)>>
   reference operator[](id<Dimensions> Index) const {
     const size_t LinearIndex = getLinearIndex(Index);
     return getQualifiedPtr()[LinearIndex];
