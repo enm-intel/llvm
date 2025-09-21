@@ -140,7 +140,16 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
 #endif
 
   std::vector<VecType> out(numElems);
-  printString("Submitting SYCL kernel");
+  printString("Submitting SYCL kernel:");
+#ifdef VERBOSE_PRINT
+  if constexpr (NDims == 1) std::cout << "\timage size: " << width << "\n";
+  else if constexpr (NDims == 2) std::cout << "\timage size: " << width << "x" << height << "\n";
+  else if constexpr (NDims == 3) std::cout << "\timage size: " << width << "x" << height << "x" << depth << "\n";
+  std::cout << "\t# elements: " << numElems << "\n";
+  std::cout << "\t# channels: " << NChannels << "\n";
+  std::cout << "\telem size : " << sizeof(OutType) << " --> channel size: " << sizeof(VecType) << "\n";
+  std::cout << "\t# bytes   : " << numElems * sizeof(VecType) << "\n";
+#endif
   try {
     sycl::buffer<VecType, NDims> buf((VecType *)out.data(), outBufferRange);
     syclQueue.submit([&](sycl::handler &cgh) {
@@ -180,8 +189,10 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
                   std::conditional_t<NChannels == 1, OutType, VecType>>(
                   handles.imgInput, sycl::float2(fdim0, fdim1));
 
-              pixel /= static_cast<OutType>(2.f);
-              outAcc[sycl::id{dim1, dim0}] = pixel;
+              pixel /= static_cast<OutType>(2);
+              if constexpr (NChannels < 4 || CType != sycl::image_channel_type::fp32) {
+                outAcc[sycl::id{dim1, dim0}] = pixel;
+              }
             } else {
               size_t dim0 = it.get_global_id(0);
 
