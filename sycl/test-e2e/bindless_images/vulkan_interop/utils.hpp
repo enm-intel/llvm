@@ -91,6 +91,8 @@ public:
   // Convert to sycl::range<Dims> with flipped dimensions.
   sycl_range_t to_flip_range() const { return to_sycl_range<true>(); }
   // clang-format on
+
+  operator sycl_range_t() const { return to_sycl_range(); }
 };
 
 } // namespace sycl_vulkan_img_utils

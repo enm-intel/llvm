@@ -289,25 +289,24 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
   uint32_t d = dims.dpth;
   VkExtent3D vkExtent = {w, h, d};
 
-  size_t num_elems = dims.num_elems();
+  size_t numElems = dims.num_elems();
+  size_t numValues = numElems * NChannels;
   constexpr VkImageType imgTypes[] = {VK_IMAGE_TYPE_1D, VK_IMAGE_TYPE_2D,
                                       VK_IMAGE_TYPE_3D};
   constexpr VkImageType imgType = imgTypes[NDims - 1];
 
   VkFormat format = vkutil::to_vulkan_format(COrder, CType);
-  const size_t imgBytes = num_elems * NChannels * sizeof(DType);
+  const size_t imgBytes = numValues * sizeof(DType);
 
-  vkutil::vulkan_image_test_resources_t inVkImgRes1(
-      imgType, format, vkExtent, imgBytes);
-  vkutil::vulkan_image_test_resources_t inVkImgRes2(
-      imgType, format, vkExtent, imgBytes);
-  vkutil::vulkan_image_test_resources_t outVkImgRes(
-      imgType, format, vkExtent, imgBytes);
+  using VkTestImg = vkutil::vulkan_image_test_resources_t;
+
+  VkTestImg inVkImgRes1(imgType, format, vkExtent, imgBytes);
+  VkTestImg inVkImgRes2(imgType, format, vkExtent, imgBytes);
+  VkTestImg outVkImgRes(imgType, format, vkExtent, imgBytes);
 
   printString("Populating staging buffer\n");
   // Populate staging memory
-  std::vector<DType> input_vector_0(num_elems * NChannels,
-                                    static_cast<DType>(0));
+  std::vector<DType> input_vector_0(numValues, static_cast<DType>(0));
   std::srand(seed);
   bindless_helpers::fill_rand(input_vector_0);
 
@@ -315,20 +314,19 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
   VK_CHECK_CALL(vkMapMemory(vk_device, inVkImgRes1.stagingMemory, 0 /*offset*/,
                             imgBytes, 0 /*flags*/,
                             (void **)&inputStagingData));
-  for (int i = 0; i < (num_elems * NChannels); ++i) {
+  for (size_t i = 0; i < numValues; ++i) {
     inputStagingData[i] = input_vector_0[i];
   }
   vkUnmapMemory(vk_device, inVkImgRes1.stagingMemory);
 
-  std::vector<DType> input_vector_1(num_elems * NChannels,
-                                    static_cast<DType>(0));
+  std::vector<DType> input_vector_1(numValues, static_cast<DType>(0));
   std::srand(seed);
   bindless_helpers::fill_rand(input_vector_1);
 
   VK_CHECK_CALL(vkMapMemory(vk_device, inVkImgRes2.stagingMemory, 0 /*offset*/,
                             imgBytes, 0 /*flags*/,
                             (void **)&inputStagingData));
-  for (int i = 0; i < (num_elems * NChannels); ++i) {
+  for (size_t i = 0; i < numValues; ++i) {
     inputStagingData[i] = input_vector_1[i];
   }
   vkUnmapMemory(vk_device, inVkImgRes2.stagingMemory);
@@ -541,7 +539,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
                             imgBytes, 0 /*flags*/,
                             (void **)&outputStagingData));
 
-  for (int i = 0; i < (num_elems * NChannels); ++i) {
+  for (int i = 0; i < numValues; ++i) {
     DType expected = input_vector_0[i] + input_vector_1[i];
     // Use helper function to determine if data is accepted
     // For integers, exact results are expected

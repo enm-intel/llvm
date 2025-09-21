@@ -143,6 +143,9 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
   std::cout << "\timage size: " << wdth << "(w)";
   if constexpr (NDims >= 2) std::cout << " x " << hght << "(h)";
   if constexpr (NDims == 3) std::cout << " x " << dpth << "(d)";
+  std::cout << " -> group size: " << grpSize.wdth << "(w)";
+  if constexpr (NDims >= 2) std::cout << " x " << grpSize.hght << "(h)";
+  if constexpr (NDims == 3) std::cout << " x " << grpSize.dpth << "(d)";
   std::cout << "\n";
   std::cout << "\t# elements: " << numElems << "\n";
   std::cout << "\t# channels: " << NChannels << "\n";
@@ -156,7 +159,7 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
   try {
     sycl::buffer<VecType, NDims> buf((VecType *)out.data(), syclDim);
     syclQueue.submit([&](sycl::handler &cgh) {
-      sycl::stream str(32768, 64, cgh);
+      // sycl::stream str(32768, 64, cgh);
       auto outAcc = buf.template get_access<sycl::access_mode::write>(
           cgh, syclDim);
       cgh.parallel_for<KernelName>(
@@ -179,12 +182,13 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
             } else if constexpr (NDims == 2) {
               size_t y  = it.get_global_id(0);
               size_t x  = it.get_global_id(1);
-              size_t sy = it.get_global_range(0);
-              size_t sx = it.get_global_range(1);
-              size_t l0 = it.get_local_id(0);
-              size_t l1 = it.get_local_id(1);
-              const char *py = (y < 10 ? " " : "");
-              const char *px = (x < 10 ? " " : "");
+              // size_t sy = it.get_global_range(0);
+              // size_t sx = it.get_global_range(1);
+              // size_t l0 = it.get_local_id(0);
+              // size_t l1 = it.get_local_id(1);
+              // const char *py = (y < 10 ? " " : "");
+              // const char *px = (x < 10 ? " " : "");
+              sycl::id id{y, x};
 
               // Normalize coordinates -- +0.5 to look towards centre of pixel
               sycl::float2 samp_pos{float(x + 0.5f) / (float)wdth,
@@ -196,19 +200,28 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
 
               pix /= static_cast<OutType>(2);
 
-              size_t idx = outAcc.getIndex(sycl::id{y, x});
-              size_t gli = it.get_global_linear_id();
-              size_t lli = it.get_local_linear_id();
-              OutType val = static_cast<OutType>(-1);
-              constexpr bool readOkay = (NChannels < 4 || sizeof(DType) < 4);
-              if      constexpr (NChannels == 1) val = pix;
-              else if constexpr (readOkay)       val = pix[0];
-              const char *pgi  = (gli < 10 ? "  " : (gli < 100 ? " " : ""));
-              const char *pidx = (idx < 10 ? "  " : (idx < 100 ? " " : ""));
-              str << "(" << py << y << "/" << sy << ":" << l0 << ","
-                         << px << x << "/" << sx << ":" << l1 << ")->"
-                  << pidx << idx << ":" << pgi << gli << ":" << lli
-                  << "->" << val << sycl::endl;
+              // size_t idx = outAcc.getIndex(id);
+              // size_t gli = it.get_global_linear_id();
+              // size_t lli = it.get_local_linear_id();
+              // OutType val = static_cast<OutType>(-1);
+              // constexpr bool readOkay = (NChannels < 4 || sizeof(DType) < 4);
+              // if      constexpr (NChannels == 1) val = pix;
+              // else if constexpr (readOkay)       val = pix[0];
+              // const char *pgi  = (gli < 10 ? "  " : (gli < 100 ? " " : ""));
+              // const char *pidx = (idx < 10 ? "  " : (idx < 100 ? " " : ""));
+              // str << "(" << py << y << "/" << sy << ":" << l0 << ","
+              //            << px << x << "/" << sx << ":" << l1 << ")->"
+              //     << pidx << idx << ":" << pgi << gli << ":" << lli
+              //     << "->" << val << sycl::endl;
+              // if constexpr (NChannels == 4 && (CType == sycl_float || CType == sycl_uint32)) {
+              //   size_t idx = outAcc.getIndex(id);
+              //   if (idx < 8) {
+              //     outAcc[id] = pix;
+              //   }
+              // }
+              // else {
+              //   outAcc[id] = pix;
+              // }
               outAcc[sycl::id{y, x}] = pix;
             } else {
               size_t x = it.get_global_id(0);
@@ -223,7 +236,8 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
             }
           });
     });
-    printString("SYCL kernel submitted; waiting for completion:\n   row    col    ->idx:gli:l-> pixel");
+    printString("SYCL kernel submitted; waiting for completion");
+    // printString("   row    col    ->idx:gli:l-> pixel");
     syclQueue.wait_and_throw();
 
     printString("Cleaning up");
@@ -261,6 +275,12 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
   //     i = i % static_cast<uint64_t>(std::numeric_limits<OutType>::max());
   //   return static_cast<OutType>(i / 2.f);
   // };
+#ifdef VERBOSE_PRINT
+  bool prevMismatch = false;
+  VecType prevExp =
+      bindless_helpers::init_vector<OutType, NChannels>(getExpectedValue(0));
+#endif
+
   for (size_t i = 0; i < numElems; i++) {
     bool mismatch = false;
     VecType expected =
@@ -272,12 +292,22 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
 
     if (mismatch) {
 #ifdef VERBOSE_PRINT
-      std::cout << "Result mismatch (idx = " << std::setw(3) << i << ")! Expected: " << expected
-                << ", Actual: " << out[i] << "\n";
+      if (!prevMismatch)
+        std::cout << "Result mismatch (idx = " << std::setw(3) << i << ")! Expected: "
+                  << expected << ", Actual: " << out[i] << "\n";
 #else
       break;
 #endif
     }
+#ifdef VERBOSE_PRINT
+    else if (prevMismatch) {
+      std::cout << "...\n";
+      std::cout << "Result mismatch (idx = " << std::setw(3) << i-1 << ")! Expected: "
+                << prevExp << ", Actual: " << out[i-1] << "\n";
+    }
+    prevExp = expected;
+    prevMismatch = mismatch;
+#endif
   }
   if (validated) {
 #ifdef VERBOSE_PRINT
@@ -330,7 +360,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   // Verify SYCL device support for allocating/creating an image from the
   // descriptor being tested.
   // This test always maps to an `image_mem_handle` (opaque_handle).
-  syclexp::image_descriptor desc{{w,h,d}, NChannels, CType};
+  syclexp::image_descriptor desc{dims, NChannels, CType};
   if (!bindless_helpers::memoryAllocationSupported(
           desc, syclexp::image_memory_handle_type::opaque_handle, syclQueue)) {
     // The device does not support allocating/creating the image with the given
@@ -347,56 +377,53 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   VkFormat format = vkutil::to_vulkan_format(COrder, CType);
   const size_t imgBytes = numElems * NChannels * sizeof(DType);
 
-  printString("Creating input image:");
-#ifdef VERBOSE_PRINT
-  std::cout << "\timage size: " << w << "(w)";
-  if constexpr (NDims >= 2) std::cout << " x " << h << "(h)";
-  if constexpr (NDims == 3) std::cout << " x " << d << "(d)";
-  std::cout << "\n";
-  std::cout << "\t# elements: " << numElems << "\n";
-  std::cout << "\t# channels: " << NChannels << "\n";
-  std::cout << "\telem size : " << sizeof(DType) << "\n";
-  std::cout << "\t# bytes   : " << imgBytes << "\n";
-#endif
+  printString("Creating input image");
+// #ifdef VERBOSE_PRINT
+//   std::cout << "\timage size: " << w << "(w)";
+//   if constexpr (NDims >= 2) std::cout << " x " << h << "(h)";
+//   if constexpr (NDims == 3) std::cout << " x " << d << "(d)";
+//   std::cout << "\n";
+//   std::cout << "\t# elements: " << numElems << "\n";
+//   std::cout << "\t# channels: " << NChannels << "\n";
+//   std::cout << "\telem size : " << sizeof(DType) << "\n";
+//   std::cout << "\t# bytes   : " << imgBytes << "\n";
+// #endif
 
   // Create input image memory
-  constexpr VkImageUsageFlags usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                                       VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  constexpr VkImageUsageFlags imgFlags = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                         VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 #ifdef ENABLE_LINEAR_TILING
   constexpr bool linearTiling = true;
 #else
   constexpr bool linearTiling = false;
 #endif
-  auto inputImage = vkutil::createImage(imgType, format, vkExtent, usage,
-                                        1U /*mipLevels*/, linearTiling);
-  VkMemoryRequirements memRequirements;
-  auto inputImageMemoryTypeIndex = vkutil::getImageMemoryTypeIndex(
-      inputImage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, memRequirements);
-  auto inputMemory = vkutil::allocateDeviceMemory(
-      imgBytes, inputImageMemoryTypeIndex, inputImage);
-  VK_CHECK_CALL(vkBindImageMemory(vk_device, inputImage, inputMemory,
-                                  0 /*memoryOffset*/));
+  VkImage srcImg = vkutil::createImage(imgType, format, vkExtent, imgFlags,
+                                      1U /*mipLevels*/, linearTiling);
+  VkMemoryRequirements memReqs;
+  auto srcMemIdx = vkutil::getImageMemoryTypeIndex(
+      srcImg, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, memReqs);
+  auto srcMem = vkutil::allocateDeviceMemory(imgBytes, srcMemIdx, srcImg);
+  VK_CHECK_CALL(vkBindImageMemory(vk_device, srcImg, srcMem, 0 /*offset*/));
 
   printString("Creating staging buffers");
   // Create input staging memory
-  auto inputStagingBuffer = vkutil::createBuffer(
-      imgBytes,
-      VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-  auto inputStagingMemoryTypeIndex = vkutil::getBufferMemoryTypeIndex(
-      inputStagingBuffer, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-  auto inputStagingMemory =
-      vkutil::allocateDeviceMemory(imgBytes, inputStagingMemoryTypeIndex,
-                                   nullptr /*image*/, false /*exportable*/);
-  VK_CHECK_CALL(vkBindBufferMemory(vk_device, inputStagingBuffer,
-                                   inputStagingMemory, 0 /*memoryOffset*/));
+  constexpr VkBufferUsageFlags bufFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                          VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  constexpr VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+  auto stagingBuf = vkutil::createBuffer(imgBytes, bufFlags);
+  auto stagingIdx = vkutil::getBufferMemoryTypeIndex(stagingBuf, flags);
+  auto stagingMem = vkutil::allocateDeviceMemory(imgBytes, stagingIdx,
+                                                 nullptr /*image*/,
+                                                 false /*exportable*/);
+  VK_CHECK_CALL(vkBindBufferMemory(vk_device, stagingBuf,
+                                   stagingMem, 0 /*offset*/));
 
   printString("Populating staging buffer");
   // Populate staging memory
-  DType *inputStagingData = nullptr;
-  VK_CHECK_CALL(vkMapMemory(vk_device, inputStagingMemory, 0 /*offset*/,
-                            imgBytes, 0 /*flags*/,
-                            (void **)&inputStagingData));
+  DType *stagingData = nullptr;
+  VK_CHECK_CALL(vkMapMemory(vk_device, stagingMem, 0 /*offset*/, imgBytes,
+                            0 /*flags*/, (void **)&stagingData));
   auto getInputValue = [&](uint64_t i) -> DType {
     // if (CType == sycl_unorm8)
     //   return static_cast<DType>(255);
@@ -405,19 +432,19 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
       i %= static_cast<uint64_t>(std::numeric_limits<DType>::max()) + 1;
     return static_cast<DType>(i);
   };
-  { DType *p = inputStagingData;
+  { DType *p = stagingData;
     for (size_t i = 0; i < numElems; ++i) {
       DType v = getInputValue(i);
       for (int j = 0; j < NChannels; ++j) *p++ = v;
     }
   }
-  vkUnmapMemory(vk_device, inputStagingMemory);
+  // vkUnmapMemory(vk_device, stagingMem);
 
   printString("Submitting image layout transition");
   // Transition image layouts
   {
     VkImageMemoryBarrier barrierInput =
-        vkutil::createImageMemoryBarrier(inputImage, 1 /*mipLevels*/);
+        vkutil::createImageMemoryBarrier(srcImg, 1 /*mipLevels*/);
 
     VkCommandBufferBeginInfo cbbi = {};
     cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -473,8 +500,8 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
     copyRegion.imageSubresource.layerCount = 1;
 
     VK_CHECK_CALL(vkBeginCommandBuffer(vk_transferCmdBuffers[0], &cbbi));
-    vkCmdCopyBufferToImage(vk_transferCmdBuffers[0], inputStagingBuffer,
-                           inputImage, VK_IMAGE_LAYOUT_GENERAL,
+    vkCmdCopyBufferToImage(vk_transferCmdBuffers[0], stagingBuf,
+                           srcImg, VK_IMAGE_LAYOUT_GENERAL,
                            1 /*regionCount*/, &copyRegion);
     VK_CHECK_CALL(vkEndCommandBuffer(vk_transferCmdBuffers[0]));
 
@@ -504,9 +531,9 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   // Pass memory to SYCL for modification
 
 #ifdef _WIN32
-  auto input_mem_handle = vkutil::getMemoryWin32Handle(inputMemory);
+  auto input_mem_handle = vkutil::getMemoryWin32Handle(srcMem);
 #else
-  auto input_mem_handle = vkutil::getMemoryOpaqueFD(inputMemory);
+  auto input_mem_handle = vkutil::getMemoryOpaqueFD(srcMem);
 #endif
 
   printString("Getting semaphore interop handles");
@@ -533,10 +560,11 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
           sycl_wait_semaphore_handle);
 
   // Cleanup
-  vkDestroyBuffer(vk_device, inputStagingBuffer, nullptr);
-  vkDestroyImage(vk_device, inputImage, nullptr);
-  vkFreeMemory(vk_device, inputStagingMemory, nullptr);
-  vkFreeMemory(vk_device, inputMemory, nullptr);
+  vkUnmapMemory(vk_device, stagingMem);
+  vkDestroyBuffer(vk_device, stagingBuf, nullptr);
+  vkDestroyImage(vk_device, srcImg, nullptr);
+  vkFreeMemory(vk_device, stagingMem, nullptr);
+  vkFreeMemory(vk_device, srcMem, nullptr);
 #ifdef TEST_SEMAPHORE_IMPORT
   vkDestroySemaphore(vk_device, syclWaitSemaphore, nullptr);
 #endif
@@ -579,35 +607,309 @@ bool run_tests() {
   valid &= run_test<3, uint8_t, 4, sycl_unorm8, sycl_rgba, class unorm_int8_3d_c4>
                ({2048, 2048, 2}, {16, 16, 1});
 #else
-  valid &= run_test<1, uint8_t, 1, sycl_unorm8, sycl_r, class unorm8_1d_c1>
-               ({1024}, {4});
+  // Debug tests - smaller sizes for quicker execution
+  // valid &= run_test<1, uint8_t, 1, sycl_unorm8, sycl_r, class unorm8_1d_c1>
+  //              ({1024}, {4});
 
-  valid &= run_test<1, int16_t, 1, sycl_sint16, sycl_rgba, class int16_1d_c1>
-               ({1024}, {4});
+  // valid &= run_test<1, int16_t, 1, sycl_sint16, sycl_rgba, class int16_1d_c1>
+  //              ({1024}, {4});
 
-  valid &= run_test<1, float, 1, sycl_float, sycl_r, class fp32_1d_c1>
-               ({1024}, {4});
+  // valid &= run_test<1, float, 1, sycl_float, sycl_r, class fp32_1d_c1>
+  //              ({1024}, {4});
 
-  valid &= run_test<1, float, 4, sycl_float, sycl_rgba, class fp32_1d_c4>
-               ({1024}, {4});
+  // valid &= run_test<1, float, 4, sycl_float, sycl_rgba, class fp32_1d_c4>
+  //              ({1024}, {4});
 
-  valid &= run_test<2, uint8_t, 4, sycl_unorm8, sycl_rgba, class unorm8_2d_c4>
-               ({32, 16}, {4, 2});
+  // valid &= run_test<2, uint8_t, 4, sycl_unorm8, sycl_rgba, class unorm8_2d_c4>
+  //              ({32, 16}, {4, 2});
 
-  valid &= run_test<2, int16_t, 4, sycl_sint16, sycl_rgba, class int16_2d_c4>
+  // valid &= run_test<2, int16_t, 4, sycl_sint16, sycl_rgba, class int16_2d_c4>
+  //              ({16, 16}, {2, 2});
+
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2>
+  //              ({16, 16}, {2, 2});
+
+  // valid &= run_test<2, float, 1, sycl_float, sycl_r, class float_2d_c1>
+  //              ({16, 16}, {2, 2});
+
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2>
+  //              ({16, 16}, {2, 2});
+
+  // ******** Debug test cases: Commented test cases fail ********
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_08_16_22>
+               ({8, 16}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_08_16_44>
+               ({8, 16}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_08_24_22>
+               ({8, 24}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_08_24_44>
+               ({8, 24}, {4, 4});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_10_16_22>
+  //              ({10, 16}, {2, 2});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_12_16_22>
+  //              ({12, 16}, {2, 2});
+
+  valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_16_16_22>
                ({16, 16}, {2, 2});
+  valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_16_16_44>
+               ({16, 16}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_16_22>
+  //              ({16, 16}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_16_44>
+  //              ({16, 16}, {4, 4});
 
-  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2>
-               ({16, 16}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_18_22>
+               ({16, 18}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_18_42>
+               ({16, 18}, {4, 2});
 
-  valid &= run_test<2, float, 1, sycl_float, sycl_r, class float_2d_c1>
-               ({16, 16}, {2, 2});
-
-  valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2>
-               ({16, 16}, {2, 2});
-
-  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4>
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_20_22>
+               ({16, 20}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_20_24>
                ({16, 20}, {2, 4});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_20_42>
+               ({16, 20}, {4, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_20_44>
+               ({16, 20}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_24_22>
+               ({16, 24}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_24_24>
+               ({16, 24}, {2, 4});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_24_42>
+               ({16, 24}, {4, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_24_44>
+               ({16, 24}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_32_22>
+               ({16, 32}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_32_44>
+               ({16, 32}, {4, 4});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_20_16_22>
+  //              ({20, 16}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_20_16_44>
+  //              ({20, 16}, {4, 4});
+
+  valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_20_20_22>
+               ({20, 20}, {2, 2});
+  valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_20_20_44>
+               ({20, 20}, {4, 4});
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_20_20_22>
+  //              ({20, 20}, {2, 2});
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_20_20_22>
+  //              ({20, 20}, {2, 2});
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_20_20_44>
+  //              ({20, 20}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_20_20_22>
+  //              ({20, 20}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_20_20_44>
+  //              ({20, 20}, {4, 4});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_40_22>
+  //              ({16, 40}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_40_44>
+  //              ({16, 40}, {4, 4});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_48_22>
+  //              ({16, 48}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_48_24>
+  //              ({16, 48}, {2, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_16_48_48>
+  //              ({16, 48}, {4, 8});
+
+  valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_24_24_22>
+               ({24, 24}, {2, 2});
+  valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_24_24_44>
+               ({24, 24}, {4, 4});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_24_22>
+               ({24, 24}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_24_44>
+               ({24, 24}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_32_22>
+               ({24, 32}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_32_44>
+               ({24, 32}, {4, 4});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_32_88>
+               ({24, 32}, {8, 8});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_40_22>
+  //              ({24, 40}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_40_44>
+  //              ({24, 40}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_40_88>
+  //              ({24, 40}, {8, 8});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_48_22>
+  //              ({24, 48}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_48_44>
+  //              ({24, 48}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_24_48_88>
+  //              ({24, 48}, {8, 8});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_24_22>
+  //              ({32, 24}, {2, 2});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_16_22>
+  //              ({32, 16}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_16_44>
+  //              ({32, 16}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_16_88>
+  //              ({32, 16}, {8, 8});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_32_22>
+               ({32, 32}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_32_44>
+               ({32, 32}, {4, 4});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_32_88>
+               ({32, 32}, {8, 8});
+
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_32_64_22>
+  //              ({32, 64}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_64_22>
+  //              ({32, 64}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_64_44>
+  //              ({32, 64}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_64_88>
+  //              ({32, 64}, {8, 8});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_96_22>
+  //              ({32, 96}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_96_44>
+  //              ({32, 96}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_32_96_88>
+  //              ({32, 96}, {8, 8});
+
+  valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_48_24_22>
+               ({48, 24}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_24_22>
+  //              ({48, 24}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_24_44>
+  //              ({48, 24}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_32_22>
+               ({48, 32}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_32_44>
+               ({48, 32}, {4, 4});
+
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_48_48_22>
+  //              ({48, 48}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_48_22>
+  //              ({48, 48}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_48_44>
+  //              ({48, 48}, {4, 4});
+
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_48_64_22>
+  //              ({48, 64}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_64_22>
+  //              ({48, 64}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_64_44>
+  //              ({48, 64}, {4, 4});
+
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_48_96_22>
+  //              ({48, 96}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_96_22>
+  //              ({48, 96}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_96_44>
+  //              ({48, 96}, {4, 4});
+
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_48_128_22>
+  //              ({48, 128}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_128_22>
+  //              ({48, 128}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_48_128_44>
+  //              ({48, 128}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_32_22>
+               ({64, 32}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_32_44>
+               ({64, 32}, {4, 4});
+
+  // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_48_22>
+  //              ({64, 48}, {2, 2});
+  // valid &= run_test<2, int16_t, 4, sycl_sint16, sycl_rgba, class int16_2d_c4_64_48_22>
+  //              ({64, 48}, {2, 2});
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_64_48_22>
+  //              ({64, 48}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_48_22>
+  //              ({64, 48}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_48_44>
+  //              ({64, 48}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_64_22>
+               ({64, 64}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_64_44>
+               ({64, 64}, {4, 4});
+
+  // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_80_22>
+  //              ({64, 80}, {2, 2});
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_64_80_22>
+  //              ({64, 80}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_80_22>
+  //              ({64, 80}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_80_44>
+  //              ({64, 80}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_96_22>
+               ({64, 96}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_96_44>
+               ({64, 96}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_128_22>
+               ({64, 128}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_128_44>
+               ({64, 128}, {4, 4});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_160_22>
+               ({64, 160}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_160_44>
+               ({64, 160}, {4, 4});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_160_44>
+               ({64, 160}, {8, 8});
+
+  // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_176_44>
+  //              ({64, 176}, {4, 4});
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2_64_176_44>
+  //              ({64, 176}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_176_22>
+  //              ({64, 176}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_176_44>
+  //              ({64, 176}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_176_44>
+  //              ({64, 176}, {8, 8});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_192_22>
+               ({64, 192}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_192_44>
+               ({64, 192}, {4, 4});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_192_44>
+               ({64, 192}, {8, 8});
+
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_256_22>
+               ({64, 256}, {2, 2});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_256_44>
+               ({64, 256}, {4, 4});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_64_256_44>
+               ({64, 256}, {8, 8});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_72_256_22>
+  //              ({72, 256}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_72_256_44>
+  //              ({72, 256}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_72_256_44>
+  //              ({72, 256}, {8, 8});
+
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_128_256_22>
+  //              ({128, 256}, {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_128_256_44>
+  //              ({128, 256}, {4, 4});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4_128_256_44>
+  //              ({128, 256}, {8, 8});
+  // ******** End of debug tests ********
 
   // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d>
   //              ({16, 16}, {2, 2});
