@@ -580,18 +580,18 @@ VkImage createImage(VkImageType type, VkFormat format, VkExtent3D extent,
 
     ici.pNext = &emici;
   }
-#ifdef VERBOSE_PRINT
-  std::cout << "Vulkan image create info:\n";
-  std::cout <<"\tImage type = " << ici.imageType << "\n";
-  std::cout <<"\tFormat     = " << ici.format << "\n";
-  std::cout <<"\tExtent     = (" << extent.width<< ", " << extent.height
-            << ", " << extent.depth << ")\n";
-  std::cout <<"\tMip levels = " << ici.mipLevels << "\n";
-  std::cout <<"\tArr layers = " << ici.arrayLayers << "\n";
-  std::cout <<"\tUsage      = " << ici.usage << "\n";
-  std::cout <<"\tTiling     = " << ici.tiling << "\n";
-  std::cout <<"\tSamples    = " << ici.samples << "\n";
-#endif
+// #ifdef VERBOSE_PRINT
+//   std::cout << "Vulkan image create info:\n";
+//   std::cout <<"\tImage type = " << ici.imageType << "\n";
+//   std::cout <<"\tFormat     = " << ici.format << "\n";
+//   std::cout <<"\tExtent     = (" << extent.width<< ", " << extent.height
+//             << ", " << extent.depth << ")\n";
+//   std::cout <<"\tMip levels = " << ici.mipLevels << "\n";
+//   std::cout <<"\tArr layers = " << ici.arrayLayers << "\n";
+//   std::cout <<"\tUsage      = " << ici.usage << "\n";
+//   std::cout <<"\tTiling     = " << ici.tiling << "\n";
+//   std::cout <<"\tSamples    = " << ici.samples << "\n";
+// #endif
   VkImage image;
   if (vkCreateImage(vk_device, &ici, nullptr, &image)) {
     std::cerr << "Could not create image!\n";

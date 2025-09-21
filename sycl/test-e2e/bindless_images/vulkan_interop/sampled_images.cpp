@@ -19,6 +19,13 @@
 #include <sycl/sycl.hpp>
 #include <sycl/ext/oneapi/bindless_images.hpp>
 
+#define DEBUG_SAMPLED_IMG 1
+#ifdef VERBOSE_PRINT
+#define VERBOSE_DEBUG DEBUG_SAMPLED_IMG
+#else
+#define VERBOSE_DEBUG 0
+#endif 
+
 namespace syclexp = sycl::ext::oneapi::experimental;
 
 using namespace sycl_vulkan_img_utils;
@@ -139,7 +146,7 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
 
   std::vector<VecType> out(numElems);
   printString("Submitting SYCL kernel");
-#ifdef VERBOSE_PRINT
+#if VERBOSE_DEBUG
   std::cout << "\timage size: " << wdth << "(w)";
   if constexpr (NDims >= 2) std::cout << " x " << hght << "(h)";
   if constexpr (NDims == 3) std::cout << " x " << dpth << "(d)";
@@ -154,7 +161,7 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
   std::cout << "\t# bytes   : " << numElems * sizeof(VecType) << "\n";
   if (sizeof(DType) != sizeof(OutType))
     std::cout << "\t***** NOTE: Output data type different from image data type *****\n";
-#endif
+#endif // VERBOSE_DEBUG
   using samp_t = std::conditional_t<NChannels == 1, OutType, VecType>;
   try {
     sycl::buffer<VecType, NDims> buf((VecType *)out.data(), syclDim);
@@ -235,7 +242,6 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
           });
     });
     printString("SYCL kernel submitted; waiting for completion");
-    // printString("   row    col    ->idx:gli-> pixel");
     syclQueue.wait_and_throw();
 
     printString("Cleaning up");
@@ -266,29 +272,33 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
     // return static_cast<OutType>(i / 2.0f);
     return static_cast<OutType>(i);
   };
-// #ifdef VERBOSE_PRINT
-//   bool prevMismatch = false;
-//   VecType prevVal = out[0];
-//   VecType prevExp = prevVal;
+#ifdef VERBOSE_PRINT
+  bool prevMismatch = false;
+  VecType prevVal = out[0];
+  VecType prevExp = prevVal;
 
+// # if VERBOSE_DEBUG
 //   std::cout << "   ";
 //   for (uint32_t x = 0; x < wdth; ++x) {
 //     uint32_t x_m = x % 64;
 //     if (x_m < 3 || x_m >= 61) std::cout << " " << std::setw(6) << x;
 //   }
-// #endif
+// #endif // VERBOSE_DEBUG
+# endif // VERBOSE_PRINT
 
   for (size_t i = 0; i < numElems; i++) {
+# if VERBOSE_DEBUG
     // uint32_t x = static_cast<uint32_t>(i % wdth);
     // uint32_t y = static_cast<uint32_t>(i / wdth);
     // uint32_t x_m = x % 64;
     // uint32_t y_m = y % 32;
+# endif // VERBOSE_DEBUG
     bool mismatch = false;
     VecType value = out[i];
     VecType expect =
         bindless_helpers::init_vector<OutType, NChannels>(getExpectedValue(i));
 /*
-#ifdef VERBOSE_PRINT
+#if VERBOSE_DEBUG
     if (y_m < 3 || y_m >= 29) {
       if (x == 0) {
         std::cout << "\n";
@@ -339,7 +349,7 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
       break;
 #endif
     }
-// #ifdef VERBOSE_PRINT
+#ifdef VERBOSE_PRINT
 //     else if (prevMismatch) {
 //       size_t prv_i = (i - 1);
 //       uint32_t x = static_cast<uint32_t>(prv_i % wdth);
@@ -350,10 +360,10 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
 //                 << "]! Expected: " << prevExp << ", Actual: " << prevVal
 //                 << "\n";
 //     }
-    // prevExp = expect;
-    // prevVal = value;
-    // prevMismatch = mismatch;
-// #endif
+    prevExp = expect;
+    prevVal = value;
+    prevMismatch = mismatch;
+#endif
   }
 #ifdef VERBOSE_PRINT
   if (validated) {
@@ -378,7 +388,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   using OutType = typename OutputType<DType, CType>::type;
   using VecType = sycl::vec<OutType, NChannels>;
 
-#ifdef VERBOSE_PRINT
+#if VERBOSE_DEBUG
     std::cout << "----------------------------------------\n";
     std::cout << "Running test:\n\tdimensions  : " << NDims
               << "\n\tchannels    : " << NChannels
@@ -429,7 +439,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   const size_t imgBytes = numElems * NChannels * sizeof(DType);
 
   printString("Creating input image");
-// #ifdef VERBOSE_PRINT
+// #if VERBOSE_DEBUG
 //   std::cout << "\timage size: " << w << "(w)";
 //   if constexpr (NDims >= 2) std::cout << " x " << h << "(h)";
 //   if constexpr (NDims == 3) std::cout << " x " << d << "(d)";
@@ -483,7 +493,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
       i %= static_cast<uint64_t>(std::numeric_limits<DType>::max()) + 1;
     return static_cast<DType>(i);
   };
-// #ifdef VERBOSE_PRINT
+// #if VERBOSE_DEBUG
 //   std::cout << "   ";
 //   for (uint32_t x = 0; x < w; ++x) {
 //     uint32_t x_m = x % 64;
@@ -494,7 +504,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
     for (size_t i = 0; i < numElems; ++i) {
       DType v = getInputValue(i);
 /*
-#ifdef VERBOSE_PRINT
+#if VERBOSE_DEBUG
       uint32_t x = static_cast<uint32_t>(i % w);
       uint32_t y = static_cast<uint32_t>(i / w);
       uint32_t x_m = x % 64;
@@ -532,7 +542,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
       else if (y_m < 6 && x == 0) std::cout << "\n . |   .";
 #endif  
 */
-// #ifdef VERBOSE_PRINT
+// #if VERBOSE_DEBUG
 //       uint32_t y = i / w;
 //       uint32_t x = i % w;
 //       if (x % 8 == 0)
@@ -712,7 +722,8 @@ bool run_tests() {
                ({2048, 2048, 4}, {16, 16, 1});
   valid &= run_test<3, uint8_t, 4, sycl_unorm8, sycl_rgba, class unorm_int8_3d_c4>
                ({2048, 2048, 2}, {16, 16, 1});
-#else
+#else // if TEST_L0_SUPPORTED_VK_FORMAT
+# if DEBUG_SAMPLED_IMG
   // Debug tests - smaller sizes for quicker execution
   // valid &= run_test<1, uint8_t, 1, sycl_unorm8, sycl_r, class unorm8_1d_c1>
   //              ({1024}, {4});
@@ -741,381 +752,465 @@ bool run_tests() {
   // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2>
   //              ({16, 16}, {2, 2});
 
+
   // ******** Debug test cases: Commented test cases fail ********
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_16_22>
-               ({8, 16}, {2, 2});
+               ({8, 16}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_16_44>
-               ({8, 16}, {4, 4});
+               ({8, 16}, {4, 4}); // Passes
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_24_22>
-               ({8, 24}, {2, 2});
+               ({8, 24}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_08_24_44>
-               ({8, 24}, {4, 4});
+               ({8, 24}, {4, 4}); // Passes
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_10_16_22>
-  //              ({10, 16}, {2, 2});
+  //              ({10, 16}, {2, 2}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_12_16_22>
-  //              ({12, 16}, {2, 2});
+  //              ({12, 16}, {2, 2}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_16_08_22>
-               ({16, 8}, {2, 2});
+               ({16, 8}, {2, 2}); // Passes
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_08_22>
-  //              ({16, 8}, {2, 2});
+  //              ({16, 8}, {2, 2}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_16_16_22>
-               ({16, 16}, {2, 2});
+               ({16, 16}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_16_16_44>
-               ({16, 16}, {4, 4});
+               ({16, 16}, {4, 4}); // Passes
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_16_22>
-  //              ({16, 16}, {2, 2});
+  //              ({16, 16}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_16_44>
-  //              ({16, 16}, {4, 4});
+  //              ({16, 16}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_18_22>
-               ({16, 18}, {2, 2});
+               ({16, 18}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_18_42>
-               ({16, 18}, {4, 2});
+               ({16, 18}, {4, 2}); // Passes
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_22>
-               ({16, 20}, {2, 2});
+               ({16, 20}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_24>
-               ({16, 20}, {2, 4});
+               ({16, 20}, {2, 4}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_42>
-               ({16, 20}, {4, 2});
+               ({16, 20}, {4, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_20_44>
-               ({16, 20}, {4, 4});
+               ({16, 20}, {4, 4}); // Passes
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_22>
-               ({16, 24}, {2, 2});
+               ({16, 24}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_24>
-               ({16, 24}, {2, 4});
+               ({16, 24}, {2, 4}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_42>
-               ({16, 24}, {4, 2});
+               ({16, 24}, {4, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_24_44>
-               ({16, 24}, {4, 4});
+               ({16, 24}, {4, 4}); // Passes
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_32_22>
-               ({16, 32}, {2, 2});
+               ({16, 32}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_32_44>
-               ({16, 32}, {4, 4});
+               ({16, 32}, {4, 4}); // Passes
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_40_22>
-  //              ({16, 40}, {2, 2});
+  //              ({16, 40}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_40_44>
-  //              ({16, 40}, {4, 4});
+  //              ({16, 40}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_48_22>
-  //              ({16, 48}, {2, 2});
+  //              ({16, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_48_24>
-  //              ({16, 48}, {2, 4});
+  //              ({16, 48}, {2, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_16_48_48>
-  //              ({16, 48}, {4, 8});
+  //              ({16, 48}, {4, 8}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_16_22>
-  //              ({20, 16}, {2, 2});
+  //              ({20, 16}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_16_44>
-  //              ({20, 16}, {4, 4});
+  //              ({20, 16}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_20_20_22>
-               ({20, 20}, {2, 2});
+               ({20, 20}, {2, 2}); // Passes
   valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_20_20_44>
-               ({20, 20}, {4, 4});
+               ({20, 20}, {4, 4}); // Passes
   valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_20_20_22>
-               ({20, 20}, {2, 2});
+               ({20, 20}, {2, 2}); // Passes
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_20_20_22>
-  //              ({20, 20}, {2, 2});
+  //              ({20, 20}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_20_20_44>
-  //              ({20, 20}, {4, 4});
+  //              ({20, 20}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_20_22>
-  //              ({20, 20}, {2, 2});
+  //              ({20, 20}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_20_20_44>
-  //              ({20, 20}, {4, 4});
+  //              ({20, 20}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_24_24_22>
-               ({24, 24}, {2, 2});
+               ({24, 24}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_24_24_44>
-               ({24, 24}, {4, 4});
+               ({24, 24}, {4, 4}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_24_22>
-               ({24, 24}, {2, 2});
+               ({24, 24}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_24_44>
-               ({24, 24}, {4, 4});
+               ({24, 24}, {4, 4}); // Passes
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_32_22>
-               ({24, 32}, {2, 2});
+               ({24, 32}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_32_44>
-               ({24, 32}, {4, 4});
+               ({24, 32}, {4, 4}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_32_88>
-               ({24, 32}, {8, 8});
+               ({24, 32}, {8, 8}); // Passes
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_40_22>
-  //              ({24, 40}, {2, 2});
+  //              ({24, 40}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_40_44>
-  //              ({24, 40}, {4, 4});
+  //              ({24, 40}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_40_88>
-  //              ({24, 40}, {8, 8});
+  //              ({24, 40}, {8, 8}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_24_48_22>
-  //              ({24, 48}, {2, 2});
+  //              ({24, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_48_22>
-  //              ({24, 48}, {2, 2});
+  //              ({24, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_48_44>
-  //              ({24, 48}, {4, 4});
+  //              ({24, 48}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_24_48_88>
-  //              ({24, 48}, {8, 8});
+  //              ({24, 48}, {8, 8}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_16_22>
-  //              ({32, 16}, {2, 2});
+  //              ({32, 16}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_16_44>
-  //              ({32, 16}, {4, 4});
+  //              ({32, 16}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_16_88>
-  //              ({32, 16}, {8, 8});
+  //              ({32, 16}, {8, 8}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_24_22>
-  //              ({32, 24}, {2, 2});
+  //              ({32, 24}, {2, 2}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_32_22>
-               ({32, 32}, {2, 2});
+               ({32, 32}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_32_44>
-               ({32, 32}, {4, 4});
+               ({32, 32}, {4, 4}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_32_88>
-               ({32, 32}, {8, 8});
+               ({32, 32}, {8, 8}); // Passes
 
   // valid &= run_test<2, int16_t, 1, sycl_sint16, sycl_r, class uint32_2d_c1_32_64_22>
-  //              ({32, 64}, {2, 2});
+  //              ({32, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_32_64_22>
-  //              ({32, 64}, {2, 2});
+  //              ({32, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_32_64_22>
-  //              ({32, 64}, {2, 2});
+  //              ({32, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_64_22>
-  //              ({32, 64}, {2, 2});
+  //              ({32, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_64_44>
-  //              ({32, 64}, {4, 4});
+  //              ({32, 64}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_64_88>
-  //              ({32, 64}, {8, 8});
+  //              ({32, 64}, {8, 8}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_96_22>
-  //              ({32, 96}, {2, 2});
+  //              ({32, 96}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_96_44>
-  //              ({32, 96}, {4, 4});
+  //              ({32, 96}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_32_96_88>
-  //              ({32, 96}, {8, 8});
+  //              ({32, 96}, {8, 8}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_24_22>
-               ({48, 24}, {2, 2});
+               ({48, 24}, {2, 2}); // Passes
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_24_22>
-  //              ({48, 24}, {2, 2});
+  //              ({48, 24}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_24_44>
-  //              ({48, 24}, {4, 4});
+  //              ({48, 24}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_32_22>
-               ({48, 32}, {2, 2});
+               ({48, 32}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_32_44>
-               ({48, 32}, {4, 4});
+               ({48, 32}, {4, 4}); // Passes
 
   // valid &= run_test<2, int16_t, 1, sycl_sint16, sycl_r, class uint32_2d_c1_48_48_22>
-  //              ({48, 48}, {2, 2});
+  //              ({48, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_48_48_22>
-  //              ({48, 48}, {2, 2});
+  //              ({48, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_48_22>
-  //              ({48, 48}, {2, 2});
+  //              ({48, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_48_22>
-  //              ({48, 48}, {2, 2});
+  //              ({48, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_48_44>
-  //              ({48, 48}, {4, 4});
+  //              ({48, 48}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, int16_t, 1, sycl_sint16, sycl_r, class uint32_2d_c1_48_64_22>
-  //              ({48, 64}, {2, 2});
+  //              ({48, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_48_64_22>
-  //              ({48, 64}, {2, 2});
+  //              ({48, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_64_22>
-  //              ({48, 64}, {2, 2});
+  //              ({48, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_64_22>
-  //              ({48, 64}, {2, 2});
+  //              ({48, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_64_44>
-  //              ({48, 64}, {4, 4});
+  //              ({48, 64}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_96_22>
-  //              ({48, 96}, {2, 2});
+  //              ({48, 96}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_96_22>
-  //              ({48, 96}, {2, 2});
+  //              ({48, 96}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_96_44>
-  //              ({48, 96}, {4, 4});
+  //              ({48, 96}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_48_128_22>
-  //              ({48, 128}, {2, 2});
+  //              ({48, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_128_22>
-  //              ({48, 128}, {2, 2});
+  //              ({48, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_48_128_44>
-  //              ({48, 128}, {4, 4});
+  //              ({48, 128}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_32_22>
-               ({64, 32}, {2, 2});
+               ({64, 32}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_32_44>
-               ({64, 32}, {4, 4});
+               ({64, 32}, {4, 4}); // Passes
 
   // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_48_22>
-  //              ({64, 48}, {2, 2});
+  //              ({64, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, int16_t, 4, sycl_sint16, sycl_rgba, class int16_2d_c4_64_48_22>
-  //              ({64, 48}, {2, 2});
+  //              ({64, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_64_48_22>
-  //              ({64, 48}, {2, 2});
+  //              ({64, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_48_22>
-  //              ({64, 48}, {2, 2});
+  //              ({64, 48}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_48_44>
-  //              ({64, 48}, {4, 4});
+  //              ({64, 48}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_64_22>
-               ({64, 64}, {2, 2});
+               ({64, 64}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_64_44>
-               ({64, 64}, {4, 4});
+               ({64, 64}, {4, 4}); // Passes
 
   // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_80_22>
-  //              ({64, 80}, {2, 2});
+  //              ({64, 80}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_64_80_22>
-  //              ({64, 80}, {2, 2});
+  //              ({64, 80}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_80_22>
-  //              ({64, 80}, {2, 2});
+  //              ({64, 80}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_80_44>
-  //              ({64, 80}, {4, 4});
+  //              ({64, 80}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_96_22>
-               ({64, 96}, {2, 2});
+               ({64, 96}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_96_44>
-               ({64, 96}, {4, 4});
+               ({64, 96}, {4, 4}); // Passes
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_128_22>
-               ({64, 128}, {2, 2});
+               ({64, 128}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_128_44>
-               ({64, 128}, {4, 4});
+               ({64, 128}, {4, 4}); // Passes
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_160_22>
-               ({64, 160}, {2, 2});
+               ({64, 160}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_160_44>
-               ({64, 160}, {4, 4});
+               ({64, 160}, {4, 4}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_160_44>
-               ({64, 160}, {8, 8});
+               ({64, 160}, {8, 8}); // Passes
 
   // valid &= run_test<2, int16_t, 2, sycl_sint16, sycl_rg, class int16_2d_c2_64_176_44>
-  //              ({64, 176}, {4, 4});
+  //              ({64, 176}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_64_176_44>
-  //              ({64, 176}, {4, 4});
+  //              ({64, 176}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_176_22>
-  //              ({64, 176}, {2, 2});
+  //              ({64, 176}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_176_44>
-  //              ({64, 176}, {4, 4});
+  //              ({64, 176}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_176_44>
-  //              ({64, 176}, {8, 8});
+  //              ({64, 176}, {8, 8}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_192_22>
-               ({64, 192}, {2, 2});
+               ({64, 192}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_192_44>
-               ({64, 192}, {4, 4});
+               ({64, 192}, {4, 4}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_192_44>
-               ({64, 192}, {8, 8});
+               ({64, 192}, {8, 8}); // Passes
 
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_256_22>
-               ({64, 256}, {2, 2});
+               ({64, 256}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_256_44>
-               ({64, 256}, {4, 4});
+               ({64, 256}, {4, 4}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_64_256_44>
-               ({64, 256}, {8, 8});
+               ({64, 256}, {8, 8}); // Passes
 
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_72_256_22>
-  //              ({72, 256}, {2, 2});
+  //              ({72, 256}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_72_256_22>
-  //              ({72, 256}, {2, 2});
+  //              ({72, 256}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_72_256_44>
-  //              ({72, 256}, {4, 4});
+  //              ({72, 256}, {4, 4}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_72_256_44>
-  //              ({72, 256}, {8, 8});
+  //              ({72, 256}, {8, 8}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_80_80_22>
-  //              ({80, 80}, {2, 2});
+  //              ({80, 80}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_80_22>
-  //              ({80, 80}, {2, 2});
+  //              ({80, 80}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_80_44>
-  //              ({80, 80}, {4, 4});
+  //              ({80, 80}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_96_22>
-  //              ({80, 96}, {2, 2});
+  //              ({80, 96}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_96_44>
-  //              ({80, 96}, {4, 4});
+  //              ({80, 96}, {4, 4}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_128_22>
-  //              ({80, 128}, {2, 2});
+  //              ({80, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_80_128_44>
-  //              ({80, 128}, {4, 4});
+  //              ({80, 128}, {4, 4}); // Kernel hangs (test doesn't complete)
+
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_96_32_22>
+               ({96, 32}, {2, 2}); // Passes
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_96_32_22>
+               ({96, 32}, {2, 2}); // Passes
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_32_22>
+  //              ({96, 32}, {2, 2}); // Kernel hangs (test doesn't complete)
+
+  // valid &= run_test<2, int8_t, 1, sycl_sint8, sycl_r, class int8_2d_c1_96_64_22>
+  //              ({96, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
+  // valid &= run_test<2, int16_t, 1, sycl_sint16, sycl_r, class int16_2d_c1_96_64_22>
+  //              ({96, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
+  // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_96_64_22>
+  //              ({96, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_96_64_22>
+  //              ({96, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_64_22>
+  //              ({96, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
 
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_96_22>
-  //              ({96, 96}, {2, 2});
+  //              ({96, 96}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_96_44>
-  //              ({96, 96}, {4, 4});
+  //              ({96, 96}, {4, 4}); // Kernel hangs (test doesn't complete)
 
+  // valid &= run_test<2, int8_t, 1, sycl_sint8, sycl_r, class int8_2d_c1_96_128_22>
+  //              ({96, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
+  // valid &= run_test<2, int16_t, 1, sycl_sint16, sycl_r, class int16_2d_c1_96_128_22>
+  //              ({96, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
+  // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_96_128_22>
+  //              ({96, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_128_22>
-  //              ({96, 128}, {2, 2});
+  //              ({96, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
   // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_96_128_44>
-  //              ({96, 128}, {4, 4});
+  //              ({96, 128}, {4, 4}); // Kernel hangs (test doesn't complete)
+
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_128_32_22>
+               ({128, 32}, {2, 2}); // Passes
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_128_32_22>
+               ({128, 32}, {2, 2}); // Passes
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_32_22>
+  //              ({128, 32}, {2, 2}); // Kernel hangs (test doesn't complete)
+
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_128_64_22>
+               ({128, 64}, {2, 2}); // Passes
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_128_64_22>
+               ({128, 64}, {2, 2}); // Passes
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_64_22>
+               ({128, 64}, {2, 2}); // Fails (test completes, but output is wrong)
+
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_128_96_22>
+               ({128, 96}, {2, 2}); // Passes
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_128_96_22>
+               ({128, 96}, {2, 2}); // Passes
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_96_22>
+  //              ({128, 96}, {2, 2}); // Kernel hangs (test doesn't complete)
 
   valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_128_128_22>
-               ({128, 128}, {2, 2});
+               ({128, 128}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_128_128_22>
-               ({128, 128}, {2, 2});
+               ({128, 128}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_128_22>
-               ({128, 128}, {2, 2});
+               ({128, 128}, {2, 2}); // Fails (test completes, but output is wrong)
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_128_44>
-               ({128, 128}, {4, 4});
+               ({128, 128}, {4, 4}); // Fails (test completes, but output is wrong)
 
   valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_128_256_22>
-               ({128, 256}, {2, 2});
+               ({128, 256}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_128_256_22>
-               ({128, 256}, {2, 2});
+               ({128, 256}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_256_22>
-               ({128, 256}, {2, 2});
+               ({128, 256}, {2, 2}); // Fails (test completes, but output is wrong)
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_256_44>
-               ({128, 256}, {4, 4});
+               ({128, 256}, {4, 4}); // Fails (test completes, but output is wrong)
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_128_256_44>
-               ({128, 256}, {8, 8});
+               ({128, 256}, {8, 8}); // Fails (test completes, but output is wrong)
 
+  valid &= run_test<2, int8_t, 1, sycl_sint8, sycl_r, class int8_2d_c1_256_64_22>
+               ({256, 64}, {2, 2}); // Passes
+  valid &= run_test<2, int16_t, 1, sycl_sint16, sycl_r, class int16_2d_c1_256_64_22>
+               ({256, 64}, {2, 2}); // Passes
+  // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_256_64_22>
+  //              ({256, 64}, {2, 2}); // Kernel hangs (test doesn't complete)
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_256_64_22>
+               ({256, 64}, {2, 2}); // Fails (test completes, but output is wrong)
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_256_64_22>
+               ({256, 64}, {2, 2}); // Fails (test completes, but output is wrong)
+
+  valid &= run_test<2, int8_t, 1, sycl_sint8, sycl_r, class int8_2d_c1_256_96_22>
+               ({256, 96}, {2, 2}); // Passes
+  valid &= run_test<2, int16_t, 1, sycl_sint16, sycl_r, class int16_2d_c1_256_96_22>
+               ({256, 96}, {2, 2}); // Passes
+  // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_256_96_22>
+  //              ({256, 96}, {2, 2}); // Kernel hangs (test doesn't complete)
+  // valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_256_96_22>
+  //              ({256, 96}, {2, 2}); // Kernel hangs (test doesn't complete)
+  // valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_256_96_22>
+  //              ({256, 96}, {2, 2}); // Kernel hangs (test doesn't complete)
+
+  valid &= run_test<2, int8_t, 1, sycl_sint8, sycl_r, class int8_2d_c1_256_128_22>
+               ({256, 128}, {2, 2}); // Passes
+  valid &= run_test<2, int16_t, 1, sycl_sint16, sycl_r, class int16_2d_c1_256_128_22>
+               ({256, 128}, {2, 2}); // Passes
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_256_128_22>
+               ({256, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_256_128_22>
+               ({256, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
+  valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_256_128_22>
+               ({256, 128}, {2, 2}); // Kernel hangs (test doesn't complete)
+
+  valid &= run_test<2, int8_t, 1, sycl_sint8, sycl_r, class int8_2d_c1_256_256_22>
+               ({256, 256}, {2, 2}); // Passes
+  valid &= run_test<2, int16_t, 1, sycl_sint16, sycl_r, class int16_2d_c1_256_256_22>
+               ({256, 256}, {2, 2}); // Passes
   valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_256_256_22>
-               ({256, 256}, {2, 2});
+               ({256, 256}, {2, 2}); // Fails (test completes, but output is wrong)
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_256_256_22>
-               ({256, 256}, {2, 2});
+               ({256, 256}, {2, 2}); // Fails (test completes, but output is wrong)
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_256_256_22>
-               ({256, 256}, {2, 2});
+               ({256, 256}, {2, 2}); // Fails (test completes, but output is wrong)
 
   valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d_c1_512_256_22>
-               ({512, 256}, {2, 2});
+               ({512, 256}, {2, 2}); // Fails (test completes, but output is wrong)
   valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2_512_256_22>
-               ({512, 256}, {2, 2});
+               ({512, 256}, {2, 2}); // Fails (test completes, but output is wrong)
   valid &= run_test<2, uint32_t, 4, sycl_uint32, sycl_rgba, class uint32_2d_c4_512_256_22>
-               ({512, 256}, {2, 2});
+               ({512, 256}, {2, 2}); // Fails (test completes, but output is wrong)
   // ******** End of debug tests ********
+#else // if DEBUG_SAMPLED_IMG 
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d>
+               ({16, 16}, {2, 2});
 
-  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d>
-  //              ({16, 16}, {2, 2});
+  valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_large>
+               ({1024, 1024}, {4, 2});
 
-  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_large>
-  //              ({1024, 1024}, {4, 2});
+  valid &= run_test<3, char, 2, sycl_sint8, sycl_rg, class int8_3d>
+               ({256, 16, 2}, {2, 2, 2});
 
-  // valid &= run_test<3, char, 2, sycl_sint8, sycl_rg, class int8_3d>
-  //              ({256, 16, 2}, {2, 2, 2});
+  valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d>
+               ({64, 32}, {4, 2});
 
-  // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d>
-  //              ({64, 32}, {4, 2});
+  valid &= run_test<3, uint32_t, 4, sycl_uint32, sycl_rgba, class uint_3d_large>
+               ({1024, 256, 16}, {2, 2, 4});
 
-  // valid &= run_test<3, uint32_t, 4, sycl_uint32, sycl_rgba, class uint_3d_large>
-  //              ({1024, 256, 16}, {2, 2, 4});
+  valid &= run_test<2, int32_t, 1, sycl_sint32, sycl_r, class int32_2d>
+               ({64, 32}, {4, 2});
 
-  // valid &= run_test<2, int32_t, 1, sycl_sint32, sycl_r, class int32_2d>
-  //              ({64, 32}, {4, 2});
+  valid &= run_test<3, int32_t, 2, sycl_sint32, sycl_rg, class int32_3d>
+               ({64, 32, 64}, {4, 2, 4});
 
-  // valid &= run_test<3, int32_t, 2, sycl_sint32, sycl_rg, class int32_3d>
-  //              ({64, 32, 64}, {4, 2, 4});
-
-  // valid &= run_test<3, int16_t, 1, sycl_sint16, sycl_r, class int16_3d>
-  //              ({64, 32, 64}, {4, 2, 4});
-#endif
+  valid &= run_test<3, int16_t, 1, sycl_sint16, sycl_r, class int16_3d>
+               ({64, 32, 64}, {4, 2, 4});
+#endif // else if DEBUG_SAMPLED_IMG
+#endif // else if TEST_L0_SUPPORTED_VK_FORMAT
   // clang-format on
   return valid;
 }

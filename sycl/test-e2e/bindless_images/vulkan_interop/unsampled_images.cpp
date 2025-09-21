@@ -281,13 +281,10 @@ template <int NDims, typename DType, int NChannels,
           sycl::image_channel_type CType, sycl::image_channel_order COrder,
           typename KernelName>
 bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
-  uint32_t width = static_cast<uint32_t>(dims[0]);
-  uint32_t height = 1;
-  uint32_t depth = 1;
-  uint32_t w = dims.wdth;
-  uint32_t h = dims.hght;
-  uint32_t d = dims.dpth;
-  VkExtent3D vkExtent = {w, h, d};
+  uint32_t wdth = dims.wdth;
+  uint32_t hght = dims.hght;
+  uint32_t dpth = dims.dpth;
+  VkExtent3D vkExtent = {wdth, hght, dpth};
 
   size_t numElems = dims.num_elems();
   size_t numValues = numElems * NChannels;
@@ -304,7 +301,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
   VkTestImg inVkImgRes2(imgType, format, vkExtent, imgBytes);
   VkTestImg outVkImgRes(imgType, format, vkExtent, imgBytes);
 
-  printString("Populating staging buffer\n");
+  printString("Populating staging buffer");
   // Populate staging memory
   std::vector<DType> input_vector_0(numValues, static_cast<DType>(0));
   std::srand(seed);
@@ -331,7 +328,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
   }
   vkUnmapMemory(vk_device, inVkImgRes2.stagingMemory);
 
-  printString("Submitting image layout transition\n");
+  printString("Submitting image layout transition");
   // Transition image layouts
   {
     VkImageMemoryBarrier barrierInput1 =
@@ -372,7 +369,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
 
 #ifdef TEST_SEMAPHORE_IMPORT
   // Create semaphore to later import in SYCL
-  printString("Creating semaphores\n");
+  printString("Creating semaphores");
   VkSemaphore syclWaitSemaphore;
   {
     VkExportSemaphoreCreateInfo esci = {};
@@ -408,7 +405,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
   }
 #endif // #ifdef TEST_SEMAPHORE_IMPORT
 
-  printString("Copying staging memory to images\n");
+  printString("Copying staging memory to images");
   // Copy staging to main image memory
   {
     VkCommandBufferBeginInfo cbbi = {};
@@ -416,7 +413,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
     cbbi.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 
     VkBufferImageCopy copyRegion = {};
-    copyRegion.imageExtent = {width, height, depth};
+    copyRegion.imageExtent = {wdth, hght, dpth};
     copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     copyRegion.imageSubresource.layerCount = 1;
 
@@ -449,7 +446,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
 #endif
   }
 
-  printString("Getting memory interop handles\n");
+  printString("Getting memory interop handles");
 
   // Pass memory to SYCL for modification
   auto global_size = dims;
@@ -466,7 +463,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
   auto output_mem_handle = vkutil::getMemoryOpaqueFD(outVkImgRes.imageMemory);
 #endif
 
-  printString("Getting semaphore interop handles\n");
+  printString("Getting semaphore interop handles");
 
 #ifdef TEST_SEMAPHORE_IMPORT
   // Pass semaphores to SYCL for synchronization
@@ -486,7 +483,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
   void *sycl_done_semaphore_handle = nullptr;
 #endif // #ifdef TEST_SEMAPHORE_IMPORT
 
-  printString("Calling into SYCL with interop memory and semaphore handles\n");
+  printString("Calling into SYCL with interop memory and semaphore handles");
 
   util::run_ndim_test<decltype(input_mem_handle_1),
                       decltype(sycl_wait_semaphore_handle), NDims, DType, CType,
@@ -495,7 +492,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
       output_mem_handle, sycl_wait_semaphore_handle,
       sycl_done_semaphore_handle);
 
-  printString("Copying image memory to staging memory\n");
+  printString("Copying image memory to staging memory");
   // Copy main image memory to staging
   {
     VkCommandBufferBeginInfo cbbi = {};
@@ -503,7 +500,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
     cbbi.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 
     VkBufferImageCopy copyRegion = {};
-    copyRegion.imageExtent = {width, height, depth};
+    copyRegion.imageExtent = {wdth, hght, dpth};
     copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     copyRegion.imageSubresource.layerCount = 1;
 
@@ -531,7 +528,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> local_size, uint32_t seed = 0) {
     VK_CHECK_CALL(vkQueueWaitIdle(vk_transfer_queue));
   }
 
-  printString("Validating\n");
+  printString("Validating");
   // Validate that SYCL made changes to the memory
   bool validated = true;
   DType *outputStagingData = nullptr;
@@ -572,96 +569,96 @@ bool run_all() {
   unsigned int seed = 0;
   bool valid = true;
 #ifdef TEST_L0_SUPPORTED_VK_FORMAT
-  printString("Running 3D float\n");
+  printString("Running 3D float");
   valid &= run_test<3, float, 1, sycl::image_channel_type::fp32,
                     sycl::image_channel_order::r, class fp32_3d_c1>(
       {1024, 1024, 16}, {16, 16, 1}, seed);
 
-  printString("Running 3D half2\n");
+  printString("Running 3D half2");
   valid &= run_test<3, sycl::half, 2, sycl::image_channel_type::fp16,
                     sycl::image_channel_order::rg, class fp16_3d_c2>(
       {1920, 1080, 8}, {16, 8, 2}, seed);
 
-  printString("Running 3D half4\n");
+  printString("Running 3D half4");
   valid &= run_test<3, sycl::half, 4, sycl::image_channel_type::fp16,
                     sycl::image_channel_order::rgba, class fp16_3d_c4>(
       {2048, 2048, 4}, {16, 16, 1}, seed);
 
-  printString("Running 2D float\n");
+  printString("Running 2D float");
   valid &= run_test<2, float, 1, sycl::image_channel_type::fp32,
                     sycl::image_channel_order::r, class fp32_2d_c1>(
       {1024, 1024}, {16, 16}, seed);
-  printString("Running 2D half2\n");
+  printString("Running 2D half2");
   valid &= run_test<2, sycl::half, 2, sycl::image_channel_type::fp16,
                     sycl::image_channel_order::rg, class fp16_2d_c2>(
       {1920, 1080}, {16, 8}, seed);
-  printString("Running 2D half4\n");
+  printString("Running 2D half4");
   valid &= run_test<2, sycl::half, 4, sycl::image_channel_type::fp16,
                     sycl::image_channel_order::rgba, class fp16_2d_c4>(
       {2048, 2048}, {16, 16}, seed);
 
   // 3-channels
-  printString("Running 2D half3\n");
+  printString("Running 2D half3");
   valid &= run_test<2, sycl::half, 3, sycl::image_channel_type::fp16,
                     sycl::image_channel_order::rgb, class fp16_2d_c3>(
       {2048, 2048}, {2, 2}, seed);
 
 #else
-  printString("Running 3D uint4\n");
+  printString("Running 3D uint4");
   valid &= run_test<3, uint32_t, 4, sycl::image_channel_type::signed_int32,
                     sycl::image_channel_order::rgba, class uint4_3d>(
       {272, 144, 4}, {16, 16, 4}, seed);
 
-  printString("Running 3D uint2\n");
+  printString("Running 3D uint2");
   valid &= run_test<3, uint32_t, 2, sycl::image_channel_type::unsigned_int32,
                     sycl::image_channel_order::rg, class uint2_3d>(
       {272, 144, 4}, {16, 16, 4}, seed);
 
-  printString("Running 3D uint\n");
+  printString("Running 3D uint");
   valid &= run_test<3, uint32_t, 1, sycl::image_channel_type::unsigned_int32,
                     sycl::image_channel_order::r, class uint1_3d>(
       {272, 144, 4}, {16, 16, 4}, seed);
 
-  printString("Running 3D float4\n");
+  printString("Running 3D float4");
   valid &= run_test<3, float, 4, sycl::image_channel_type::fp32,
                     sycl::image_channel_order::rgba, class float4_3d>(
       {16, 16, 16}, {16, 16, 4}, seed);
 
-  printString("Running 3D float2\n");
+  printString("Running 3D float2");
   valid &= run_test<3, float, 2, sycl::image_channel_type::fp32,
                     sycl::image_channel_order::rg, class float2_3d>(
       {128, 128, 16}, {16, 16, 4}, seed);
-  printString("Running 3D float\n");
+  printString("Running 3D float");
   valid &= run_test<3, float, 1, sycl::image_channel_type::fp32,
                     sycl::image_channel_order::r, class float1_3d>(
       {1024, 1024, 16}, {16, 16, 4}, seed);
 
-  printString("Running 2D uint4\n");
+  printString("Running 2D uint4");
   valid &= run_test<2, uint32_t, 4, sycl::image_channel_type::unsigned_int32,
                     sycl::image_channel_order::rgba, class uint4_2d>(
       {1024, 1024}, {2, 2}, seed);
 
-  printString("Running 2D uint2\n");
+  printString("Running 2D uint2");
   valid &= run_test<2, uint32_t, 2, sycl::image_channel_type::unsigned_int32,
                     sycl::image_channel_order::rg, class uint2_2d>(
       {128, 128}, {2, 2}, seed);
 
-  printString("Running 2D uint\n");
+  printString("Running 2D uint");
   valid &= run_test<2, uint32_t, 1, sycl::image_channel_type::unsigned_int32,
                     sycl::image_channel_order::r, class uint1_2d>({512, 512},
                                                                   {2, 2}, seed);
 
-  printString("Running 2D float4\n");
+  printString("Running 2D float4");
   valid &= run_test<2, float, 4, sycl::image_channel_type::fp32,
                     sycl::image_channel_order::rgba, class float4_2d>(
       {128, 64}, {2, 2}, seed);
 
-  printString("Running 2D float2\n");
+  printString("Running 2D float2");
   valid &= run_test<2, float, 2, sycl::image_channel_type::fp32,
                     sycl::image_channel_order::rg, class float2_2d>(
       {1024, 512}, {2, 2}, seed);
 
-  printString("Running 2D float\n");
+  printString("Running 2D float");
   valid &= run_test<2, float, 1, sycl::image_channel_type::fp32,
                     sycl::image_channel_order::r, class float1_2d>(
       {32, 32}, {2, 2}, seed);

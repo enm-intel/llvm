@@ -199,7 +199,7 @@ bool run_test() {
   vkutil::vulkan_image_test_resources_t outVkImgRes(
       imgType, format, {width, height, depth}, imageSizeBytes);
 
-  printString("Populating staging buffer\n");
+  printString("Populating staging buffer");
   // Populate staging memory
   std::vector<DType> inputVector(numElems * numChannels, static_cast<DType>(0));
   std::srand(seed);
@@ -214,7 +214,7 @@ bool run_test() {
   }
   vkUnmapMemory(vk_device, inVkImgRes.stagingMemory);
 
-  printString("Submitting image layout transition\n");
+  printString("Submitting image layout transition");
   // Transition image layouts
   {
     VkImageMemoryBarrier barrierInput =
@@ -250,7 +250,7 @@ bool run_test() {
   }
 
   // Create semaphore to later import in SYCL
-  printString("Creating semaphores\n");
+  printString("Creating semaphores");
   VkSemaphore syclWaitSemaphore;
   {
 
@@ -299,7 +299,7 @@ bool run_test() {
         vkCreateSemaphore(vk_device, &sci, nullptr, &syclDoneSemaphore));
   }
 
-  printString("Copying staging memory to images\n");
+  printString("Copying staging memory to images");
   // Copy staging to main image memory
   {
     VkCommandBufferBeginInfo cbbi = {};
@@ -345,7 +345,7 @@ bool run_test() {
     // order.
   }
 
-  printString("Getting memory interop handles\n");
+  printString("Getting memory interop handles");
 
   // Pass memory to SYCL for modification
   auto globalSize = dims;
@@ -357,7 +357,7 @@ bool run_test() {
   auto outputMemHandle = vkutil::getMemoryOpaqueFD(outVkImgRes.imageMemory);
 #endif
 
-  printString("Getting semaphore interop handles\n");
+  printString("Getting semaphore interop handles");
 
   // Pass semaphores to SYCL for synchronization
 #ifdef _WIN32
@@ -372,7 +372,7 @@ bool run_test() {
       vkutil::getSemaphoreOpaqueFD(syclDoneSemaphore);
 #endif
 
-  printString("Calling into SYCL with interop memory and semaphore handles\n");
+  printString("Calling into SYCL with interop memory and semaphore handles");
 
   sycl::device dev;
   sycl::queue q{dev, {sycl::property::queue::in_order{}}};
@@ -389,7 +389,7 @@ bool run_test() {
 
   util::run_sycl(q, globalSize, localSize, handles);
 
-  printString("Copying image memory to staging memory\n");
+  printString("Copying image memory to staging memory");
   // Copy main image memory to staging
   {
     VkCommandBufferBeginInfo cbbi = {};
@@ -436,7 +436,7 @@ bool run_test() {
     VK_CHECK_CALL(vkQueueWaitIdle(vk_transfer_queue));
   }
 
-  printString("Validating\n");
+  printString("Validating");
   // Validate that SYCL made changes to the memory
   bool validated = true;
   DType *outputStagingData = nullptr;
@@ -461,7 +461,7 @@ bool run_test() {
   vkUnmapMemory(vk_device, outVkImgRes.stagingMemory);
 
   if (validated) {
-    printString("  Results are correct!\n");
+    printString("  Results are correct!");
   }
 
   // Cleanup
