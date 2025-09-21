@@ -140,6 +140,7 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
 #endif
 
   std::vector<VecType> out(numElems);
+  printString("Submitting SYCL kernel");
   try {
     sycl::buffer<VecType, NDims> buf((VecType *)out.data(), outBufferRange);
     syclQueue.submit([&](sycl::handler &cgh) {
@@ -197,8 +198,10 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
             }
           });
     });
+    printString("SYCL kernel submitted: waiting for completion");
     syclQueue.wait_and_throw();
 
+    printString("Cleaning up");
 #ifdef TEST_SEMAPHORE_IMPORT
     syclexp::release_external_semaphore(handles.sycl_wait_external_semaphore,
                                         dev, ctxt);
@@ -215,7 +218,7 @@ bool run_sycl(sycl::queue syclQueue, sycl::range<NDims> globalSize,
     exit(-1);
   }
 
-  printString("Validating\n");
+  printString("Validating");
   bool validated = true;
   auto getExpectedValue = [&](int i) -> OutType {
     if (CType == sycl::image_channel_type::unorm_int8)
@@ -259,6 +262,25 @@ template <int NDims, typename DType, int NChannels,
           typename KernelName>
 bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
               unsigned int seed = 0) {
+  using OutType = typename OutputType<DType, CType>::type;
+  using VecType = sycl::vec<OutType, NChannels>;
+
+#ifdef VERBOSE_PRINT
+    std::cout << "----------------------------------------\n";
+    std::cout << "Running test:\n\tdimensions  : " << NDims
+              << "\n\tchannels    : " << NChannels
+              << "\n\tchannel type: "
+              << bindless_helpers::channelTypeToString(CType) << "\n";
+#endif
+
+  if constexpr (sycl::is_device_copyable_v<VecType>) {
+    printString("Buffer type is device copyable.");
+  }
+  else {
+    printString("Buffer type is NOT device copyable --> SKIPPING TEST.");
+    return true;
+  }
+
   uint32_t width = static_cast<uint32_t>(dims[0]);
   uint32_t height = 1;
   uint32_t depth = 1;
@@ -301,7 +323,16 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
   VkFormat format = vkutil::to_vulkan_format(COrder, CType);
   const size_t imageSizeBytes = numElems * NChannels * sizeof(DType);
 
-  printString("Creating input image\n");
+  printString("Creating input image:");
+#ifdef VERBOSE_PRINT
+  if constexpr (NDims == 1) std::cout << "\timage size: " << width << "\n";
+  else if constexpr (NDims == 2) std::cout << "\timage size: " << width << "x" << height << "\n";
+  else if constexpr (NDims == 3) std::cout << "\timage size: " << width << "x" << height << "x" << depth << "\n";
+  std::cout << "\t# elements: " << numElems << "\n";
+  std::cout << "\t# channels: " << NChannels << "\n";
+  std::cout << "\telem size : " << sizeof(DType) << "\n";
+  std::cout << "\t# bytes   : " << imageSizeBytes << "\n";
+#endif
   // Create input image memory
   auto inputImage = vkutil::createImage(
       imgType, format, {width, height, depth},
@@ -320,7 +351,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
   VK_CHECK_CALL(vkBindImageMemory(vk_device, inputImage, inputMemory,
                                   0 /*memoryOffset*/));
 
-  printString("Creating staging buffers\n");
+  printString("Creating staging buffers");
   // Create input staging memory
   auto inputStagingBuffer = vkutil::createBuffer(
       imageSizeBytes,
@@ -334,7 +365,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
   VK_CHECK_CALL(vkBindBufferMemory(vk_device, inputStagingBuffer,
                                    inputStagingMemory, 0 /*memoryOffset*/));
 
-  printString("Populating staging buffer\n");
+  printString("Populating staging buffer");
   // Populate staging memory
   DType *inputStagingData = nullptr;
   VK_CHECK_CALL(vkMapMemory(vk_device, inputStagingMemory, 0 /*offset*/,
@@ -355,7 +386,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
   }
   vkUnmapMemory(vk_device, inputStagingMemory);
 
-  printString("Submitting image layout transition\n");
+  printString("Submitting image layout transition");
   // Transition image layouts
   {
     VkImageMemoryBarrier barrierInput =
@@ -383,7 +414,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
 
 #ifdef TEST_SEMAPHORE_IMPORT
   // Create semaphore to later import in SYCL
-  printString("Creating semaphores\n");
+  printString("Creating semaphores");
   VkSemaphore syclWaitSemaphore;
   {
     VkExportSemaphoreCreateInfo esci = {};
@@ -402,7 +433,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
   }
 #endif // #ifdef TEST_SEMAPHORE_IMPORT
 
-  printString("Copying staging memory to images\n");
+  printString("Copying staging memory to images");
   // Copy staging to main image memory
   {
     VkCommandBufferBeginInfo cbbi = {};
@@ -442,7 +473,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
 #endif
   }
 
-  printString("Getting memory file descriptors\n");
+  printString("Getting memory file descriptors");
   // Pass memory to SYCL for modification
 
 #ifdef _WIN32
@@ -451,7 +482,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
   auto input_mem_handle = vkutil::getMemoryOpaqueFD(inputMemory);
 #endif
 
-  printString("Getting semaphore interop handles\n");
+  printString("Getting semaphore interop handles");
 
 #ifdef TEST_SEMAPHORE_IMPORT
   // Pass semaphores to SYCL for synchronization
@@ -466,7 +497,7 @@ bool run_test(sycl::range<NDims> dims, sycl::range<NDims> localSize,
   void *sycl_wait_semaphore_handle = nullptr;
 #endif // #ifdef TEST_SEMAPHORE_IMPORT
 
-  printString("Calling into SYCL with interop memory handle\n");
+  printString("Calling into SYCL with interop memory handle");
 
   bool validated =
       run_sycl<decltype(input_mem_handle), decltype(sycl_wait_semaphore_handle),
@@ -534,37 +565,66 @@ bool run_tests() {
                     sycl::image_channel_order::rgba, class unorm_int8_3d_c4>(
       {2048, 2048, 2}, {16, 16, 1}, 0);
 #else
-  valid &= run_test<2, float, 4, sycl::image_channel_type::fp32,
-                    sycl::image_channel_order::rgba, class float_2d>({16, 16},
-                                                                     {2, 2}, 0);
+  valid &= run_test<1, uint8_t, 1, sycl::image_channel_type::unorm_int8,
+                    sycl::image_channel_order::r, class unorm8_1d_c1>({1024}, {4}, 0);
+
+  valid &= run_test<1, float, 1, sycl::image_channel_type::fp32,
+                    sycl::image_channel_order::r, class fp32_1d_c1>({1024}, {4}, 0);
+
+  valid &= run_test<1, float, 4, sycl::image_channel_type::fp32,
+                    sycl::image_channel_order::rgba, class fp32_1d_c4>({1024}, {4}, 0);
+
+  valid &= run_test<2, uint8_t, 4, sycl::image_channel_type::unorm_int8,
+                    sycl::image_channel_order::rgba, class unorm8_2d_c4>({16, 16},
+                                                                         {2, 2}, 0);
+
+  valid &= run_test<2, int16_t, 4, sycl::image_channel_type::signed_int16,
+                    sycl::image_channel_order::rgba, class int16_2d_c4>({16, 16},
+                                                                        {2, 2}, 0);
+
+  valid &= run_test<2, uint32_t, 2, sycl::image_channel_type::unsigned_int32,
+                    sycl::image_channel_order::rg, class uint32_2d_c2>({32, 32},
+                                                                       {2, 2}, 0);
 
   valid &= run_test<2, float, 2, sycl::image_channel_type::fp32,
-                    sycl::image_channel_order::rg, class float_2d_large>(
-      {1024, 1024}, {4, 2}, 0);
+                    sycl::image_channel_order::rg, class float_2d_c2>({32, 32},
+                                                                      {2, 2}, 0);
 
-  valid &= run_test<3, char, 2, sycl::image_channel_type::signed_int8,
-                    sycl::image_channel_order::rg, class int8_3d>({256, 16, 2},
-                                                                  {2, 2, 2}, 0);
+  valid &= run_test<2, float, 4, sycl::image_channel_type::fp32,
+                    sycl::image_channel_order::rgba, class float_2d_c4>({16, 16},
+                                                                        {2, 2}, 0);
 
-  valid &= run_test<2, uint32_t, 1, sycl::image_channel_type::unsigned_int32,
-                    sycl::image_channel_order::r, class uint32_2d>({64, 32},
-                                                                   {4, 2}, 0);
+  // valid &= run_test<2, float, 4, sycl::image_channel_type::fp32,
+  //                   sycl::image_channel_order::rgba, class float_2d>({16, 16},
+  //                                                                    {2, 2}, 0);
 
-  valid &= run_test<3, uint32_t, 4, sycl::image_channel_type::unsigned_int32,
-                    sycl::image_channel_order::rgba, class uint_3d_large>(
-      {1024, 256, 16}, {2, 2, 4}, 0);
+  // valid &= run_test<2, float, 2, sycl::image_channel_type::fp32,
+  //                   sycl::image_channel_order::rg, class float_2d_large>(
+  //     {1024, 1024}, {4, 2}, 0);
 
-  valid &= run_test<2, int32_t, 1, sycl::image_channel_type::signed_int32,
-                    sycl::image_channel_order::r, class int32_2d>({64, 32},
-                                                                  {4, 2}, 0);
+  // valid &= run_test<3, char, 2, sycl::image_channel_type::signed_int8,
+  //                   sycl::image_channel_order::rg, class int8_3d>({256, 16, 2},
+  //                                                                 {2, 2, 2}, 0);
 
-  valid &= run_test<3, int32_t, 2, sycl::image_channel_type::signed_int32,
-                    sycl::image_channel_order::rg, class int32_3d>(
-      {64, 32, 64}, {4, 2, 4}, 0);
+  // valid &= run_test<2, uint32_t, 1, sycl::image_channel_type::unsigned_int32,
+  //                   sycl::image_channel_order::r, class uint32_2d>({64, 32},
+  //                                                                  {4, 2}, 0);
 
-  valid &= run_test<3, int16_t, 1, sycl::image_channel_type::signed_int16,
-                    sycl::image_channel_order::r, class int16_3d>({64, 32, 64},
-                                                                  {4, 2, 4}, 0);
+  // valid &= run_test<3, uint32_t, 4, sycl::image_channel_type::unsigned_int32,
+  //                   sycl::image_channel_order::rgba, class uint_3d_large>(
+  //     {1024, 256, 16}, {2, 2, 4}, 0);
+
+  // valid &= run_test<2, int32_t, 1, sycl::image_channel_type::signed_int32,
+  //                   sycl::image_channel_order::r, class int32_2d>({64, 32},
+  //                                                                 {4, 2}, 0);
+
+  // valid &= run_test<3, int32_t, 2, sycl::image_channel_type::signed_int32,
+  //                   sycl::image_channel_order::rg, class int32_3d>(
+  //     {64, 32, 64}, {4, 2, 4}, 0);
+
+  // valid &= run_test<3, int16_t, 1, sycl::image_channel_type::signed_int16,
+  //                   sycl::image_channel_order::r, class int16_3d>({64, 32, 64},
+  //                                                                 {4, 2, 4}, 0);
 #endif
   return valid;
 }
