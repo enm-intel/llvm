@@ -20,6 +20,22 @@
 
 namespace syclexp = sycl::ext::oneapi::experimental;
 
+// clang-format off
+// Some commonly used channel types
+constexpr sycl::image_channel_type sycl_unorm8 = sycl::image_channel_type::unorm_int8;
+constexpr sycl::image_channel_type sycl_sint8  = sycl::image_channel_type::signed_int8;
+constexpr sycl::image_channel_type sycl_half   = sycl::image_channel_type::fp16;
+constexpr sycl::image_channel_type sycl_sint16 = sycl::image_channel_type::signed_int16;
+constexpr sycl::image_channel_type sycl_sint32 = sycl::image_channel_type::signed_int32;
+constexpr sycl::image_channel_type sycl_uint32 = sycl::image_channel_type::unsigned_int32;
+constexpr sycl::image_channel_type sycl_float  = sycl::image_channel_type::fp32;
+
+constexpr sycl::image_channel_order sycl_r    = sycl::image_channel_order::r;
+constexpr sycl::image_channel_order sycl_rg   = sycl::image_channel_order::rg;
+constexpr sycl::image_channel_order sycl_rgb  = sycl::image_channel_order::rgb;
+constexpr sycl::image_channel_order sycl_rgba = sycl::image_channel_order::rgba;
+// clang-format on
+
 //----------------------------------------------------------------------------//
 template <typename T> 
 inline constexpr uint32_t to_u32(T val) { return static_cast<uint32_t>(val); }
@@ -109,7 +125,7 @@ template <typename DType, sycl::image_channel_type CType> struct OutputType {
   using type = DType;
 };
 
-template <> struct OutputType<uint8_t, sycl::image_channel_type::unorm_int8> {
+template <> struct OutputType<uint8_t, sycl_unorm8> {
   using type = float;
 };
 //-==========================================================================-//
@@ -321,12 +337,12 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
     if constexpr (std::is_integral_v<DType> ||
                   std::is_same_v<DType, sycl::half>)
       i %= static_cast<uint64_t>(std::numeric_limits<DType>::max()) + 1;
-    if (CType == sycl::image_channel_type::unorm_int8)
+    if (CType == sycl_unorm8)
       return static_cast<OutType>(static_cast<float>(i) / 510.0f);
     return static_cast<OutType>(i / 2.0f);
   };
   // auto getExpectedValue = [&](int i) -> OutType {
-  //   if (CType == sycl::image_channel_type::unorm_int8)
+  //   if (CType == sycl_unorm8)
   //     return static_cast<OutType>(0.5f);
   //   if constexpr (std::is_integral_v<OutType> ||
   //                 std::is_same_v<OutType, sycl::half>)
@@ -470,7 +486,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
                             imageSizeBytes, 0 /*flags*/,
                             (void **)&inputStagingData));
   auto getInputValue = [&](uint64_t i) -> DType {
-    // if (CType == sycl::image_channel_type::unorm_int8)
+    // if (CType == sycl_unorm8)
     //   return static_cast<DType>(255);
     if constexpr (std::is_integral_v<DType> ||
                   std::is_same_v<DType, sycl::half>)
@@ -618,120 +634,94 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
 //----------------------------------------------------------------------------//
 bool run_tests() {
   bool valid = true;
+  // clang-format off
 #ifdef TEST_L0_SUPPORTED_VK_FORMAT
-  valid &=
-      run_test<1, float, 1, sycl::image_channel_type::fp32,
-               sycl::image_channel_order::r, class fp32_1d_c1>({1024}, {4});
-  valid &=
-      run_test<1, sycl::half, 2, sycl::image_channel_type::fp16,
-               sycl::image_channel_order::rg, class fp16_1d_c2>({1024}, {4});
-  valid &= run_test<1, sycl::half, 4, sycl::image_channel_type::fp16,
-                    sycl::image_channel_order::rgba, class fp16_1d_c4>({1024},
-                                                                       {4});
-  valid &= run_test<1, uint8_t, 4, sycl::image_channel_type::unorm_int8,
-                    sycl::image_channel_order::rgba, class unorm_int8_1d_c4>(
-      {1024}, {4});
+  valid &= run_test<1, float, 1, sycl_float, sycl_r, class fp32_1d_c1>
+               ({1024}, {4});
+  valid &= run_test<1, sycl::half, 2, sycl_half, sycl_rg, class fp16_1d_c2>
+               ({1024}, {4});
+  valid &= run_test<1, sycl::half, 4, sycl_half, sycl_rgba, class fp16_1d_c4>
+               ({1024}, {4});
+  valid &= run_test<1, uint8_t, 4, sycl_unorm8, sycl_rgba, class unorm_int8_1d_c4>
+               ({1024}, {4});
 
-  valid &= run_test<2, float, 1, sycl::image_channel_type::fp32,
-                    sycl::image_channel_order::r, class fp32_2d_c1>(
-      {1024, 1024}, {16, 16});
-  valid &= run_test<2, sycl::half, 2, sycl::image_channel_type::fp16,
-                    sycl::image_channel_order::rg, class fp16_2d_c2>(
-      {1920, 1080}, {16, 8});
-  valid &= run_test<2, sycl::half, 3, sycl::image_channel_type::fp16,
-                    sycl::image_channel_order::rgb, class fp16_2d_c3>(
-      {2048, 2048}, {16, 16});
-  valid &= run_test<2, uint8_t, 3, sycl::image_channel_type::unorm_int8,
-                    sycl::image_channel_order::rgb, class unorm_int8_2d_c3>(
-      {2048, 2048}, {16, 16});
-  valid &= run_test<2, sycl::half, 4, sycl::image_channel_type::fp16,
-                    sycl::image_channel_order::rgba, class fp16_2d_c4>(
-      {2048, 2048}, {16, 16});
-  valid &= run_test<2, uint8_t, 4, sycl::image_channel_type::unorm_int8,
-                    sycl::image_channel_order::rgba, class unorm_int8_2d_c4>(
-      {2048, 2048}, {16, 16});
+  valid &= run_test<2, float, 1, sycl_float, sycl_r, class fp32_2d_c1>
+               ({1024, 1024}, {16, 16});
+  valid &= run_test<2, sycl::half, 2, sycl_half, sycl_rg, class fp16_2d_c2>
+               ({1920, 1080}, {16, 8});
+  valid &= run_test<2, sycl::half, 3, sycl_half, sycl_rgb, class fp16_2d_c3>
+               ({2048, 2048}, {16, 16});
+  valid &= run_test<2, uint8_t, 3, sycl_unorm8, sycl_rgb, class unorm_int8_2d_c3>
+               ({2048, 2048}, {16, 16});
+  valid &= run_test<2, sycl::half, 4, sycl_half, sycl_rgba, class fp16_2d_c4>
+               ({2048, 2048}, {16, 16});
+  valid &= run_test<2, uint8_t, 4, sycl_unorm8, sycl_rgba, class unorm_int8_2d_c4>
+               ({2048, 2048}, {16, 16});
 
-  valid &= run_test<3, float, 1, sycl::image_channel_type::fp32,
-                    sycl::image_channel_order::r, class fp32_3d_c1>(
-      {1024, 1024, 16}, {16, 16, 1});
-  valid &= run_test<3, sycl::half, 2, sycl::image_channel_type::fp16,
-                    sycl::image_channel_order::rg, class fp16_3d_c2>(
-      {1920, 1080, 8}, {16, 8, 2});
-  valid &= run_test<3, sycl::half, 4, sycl::image_channel_type::fp16,
-                    sycl::image_channel_order::rgba, class fp16_3d_c4>(
-      {2048, 2048, 4}, {16, 16, 1});
-  valid &= run_test<3, uint8_t, 4, sycl::image_channel_type::unorm_int8,
-                    sycl::image_channel_order::rgba, class unorm_int8_3d_c4>(
-      {2048, 2048, 2}, {16, 16, 1});
+  valid &= run_test<3, float, 1, sycl_float, sycl_r, class fp32_3d_c1>
+               ({1024, 1024, 16}, {16, 16, 1});
+  valid &= run_test<3, sycl::half, 2, sycl_half, sycl_rg, class fp16_3d_c2>
+               ({1920, 1080, 8}, {16, 8, 2});
+  valid &= run_test<3, sycl::half, 4, sycl_half, sycl_rgba, class fp16_3d_c4>
+               ({2048, 2048, 4}, {16, 16, 1});
+  valid &= run_test<3, uint8_t, 4, sycl_unorm8, sycl_rgba, class unorm_int8_3d_c4>
+               ({2048, 2048, 2}, {16, 16, 1});
 #else
-  valid &= run_test<1, uint8_t, 1, sycl::image_channel_type::unorm_int8,
-                    sycl::image_channel_order::r, class unorm8_1d_c1>({1024}, {4});
+  valid &= run_test<1, uint8_t, 1, sycl_unorm8, sycl_r, class unorm8_1d_c1>
+               ({1024}, {4});
 
-  valid &= run_test<1, int16_t, 1, sycl::image_channel_type::signed_int16,
-                    sycl::image_channel_order::rgba, class int16_1d_c1>({1024}, {4});
+  valid &= run_test<1, int16_t, 1, sycl_sint16, sycl_rgba, class int16_1d_c1>
+               ({1024}, {4});
 
-  valid &= run_test<1, float, 1, sycl::image_channel_type::fp32,
-                    sycl::image_channel_order::r, class fp32_1d_c1>({1024}, {4});
+  valid &= run_test<1, float, 1, sycl_float, sycl_r, class fp32_1d_c1>
+               ({1024}, {4});
 
-  valid &= run_test<1, float, 4, sycl::image_channel_type::fp32,
-                    sycl::image_channel_order::rgba, class fp32_1d_c4>({1024}, {4});
+  valid &= run_test<1, float, 4, sycl_float, sycl_rgba, class fp32_1d_c4>
+               ({1024}, {4});
 
-  valid &= run_test<2, uint8_t, 4, sycl::image_channel_type::unorm_int8,
-                    sycl::image_channel_order::rgba, class unorm8_2d_c4>({32, 16},
-                                                                         {4, 2});
+  valid &= run_test<2, uint8_t, 4, sycl_unorm8, sycl_rgba, class unorm8_2d_c4>
+               ({32, 16}, {4, 2});
 
-  valid &= run_test<2, int16_t, 4, sycl::image_channel_type::signed_int16,
-                    sycl::image_channel_order::rgba, class int16_2d_c4>({16, 16},
-                                                                        {2, 2});
+  valid &= run_test<2, int16_t, 4, sycl_sint16, sycl_rgba, class int16_2d_c4>
+               ({16, 16}, {2, 2});
 
-  valid &= run_test<2, uint32_t, 2, sycl::image_channel_type::unsigned_int32,
-                    sycl::image_channel_order::rg, class uint32_2d_c2>({16, 16},
-                                                                       {2, 2});
+  valid &= run_test<2, uint32_t, 2, sycl_uint32, sycl_rg, class uint32_2d_c2>
+               ({16, 16}, {2, 2});
 
-  valid &= run_test<2, float, 1, sycl::image_channel_type::fp32,
-                    sycl::image_channel_order::r, class float_2d_c1>({16, 16},
-                                                                     {2, 2});
+  valid &= run_test<2, float, 1, sycl_float, sycl_r, class float_2d_c1>
+               ({16, 16}, {2, 2});
 
-  valid &= run_test<2, float, 2, sycl::image_channel_type::fp32,
-                    sycl::image_channel_order::rg, class float_2d_c2>({16, 16},
-                                                                        {2, 2});
+  valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_c2>
+               ({16, 16}, {2, 2});
 
-  valid &= run_test<2, float, 4, sycl::image_channel_type::fp32,
-                    sycl::image_channel_order::rgba, class float_2d_c4>({16, 20},
-                                                                        {2, 4});
+  valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d_c4>
+               ({16, 20}, {2, 4});
 
-  // valid &= run_test<2, float, 4, sycl::image_channel_type::fp32,
-  //                   sycl::image_channel_order::rgba, class float_2d>({16, 16},
-  //                                                                    {2, 2});
+  // valid &= run_test<2, float, 4, sycl_float, sycl_rgba, class float_2d>
+  //              ({16, 16}, {2, 2});
 
-  // valid &= run_test<2, float, 2, sycl::image_channel_type::fp32,
-  //                   sycl::image_channel_order::rg, class float_2d_large>(
-  //     {1024, 1024}, {4, 2});
+  // valid &= run_test<2, float, 2, sycl_float, sycl_rg, class float_2d_large>
+  //              ({1024, 1024}, {4, 2});
 
-  // valid &= run_test<3, char, 2, sycl::image_channel_type::signed_int8,
-  //                   sycl::image_channel_order::rg, class int8_3d>({256, 16, 2},
-  //                                                                 {2, 2, 2});
+  // valid &= run_test<3, char, 2, sycl_sint8, sycl_rg, class int8_3d>
+  //              ({256, 16, 2}, {2, 2, 2});
 
-  // valid &= run_test<2, uint32_t, 1, sycl::image_channel_type::unsigned_int32,
-  //                   sycl::image_channel_order::r, class uint32_2d>({64, 32},
-  //                                                                  {4, 2});
+  // valid &= run_test<2, uint32_t, 1, sycl_uint32, sycl_r, class uint32_2d>
+  //              ({64, 32}, {4, 2});
 
-  // valid &= run_test<3, uint32_t, 4, sycl::image_channel_type::unsigned_int32,
-  //                   sycl::image_channel_order::rgba, class uint_3d_large>(
-  //     {1024, 256, 16}, {2, 2, 4});
+  // valid &= run_test<3, uint32_t, 4, sycl_uint32, sycl_rgba, class uint_3d_large>
+  //              ({1024, 256, 16}, {2, 2, 4});
 
-  // valid &= run_test<2, int32_t, 1, sycl::image_channel_type::signed_int32,
-  //                   sycl::image_channel_order::r, class int32_2d>({64, 32},
-  //                                                                 {4, 2});
+  // valid &= run_test<2, int32_t, 1, sycl_sint32, sycl_r, class int32_2d>
+  //              ({64, 32}, {4, 2});
 
-  // valid &= run_test<3, int32_t, 2, sycl::image_channel_type::signed_int32,
-  //                   sycl::image_channel_order::rg, class int32_3d>(
-  //     {64, 32, 64}, {4, 2, 4});
+  // valid &= run_test<3, int32_t, 2, sycl_sint32, sycl_rg, class int32_3d>
+  //              ({64, 32, 64}, {4, 2, 4});
 
-  // valid &= run_test<3, int16_t, 1, sycl::image_channel_type::signed_int16,
-  //                   sycl::image_channel_order::r, class int16_3d>({64, 32, 64},
-  //                                                                 {4, 2, 4});
+  // valid &= run_test<3, int16_t, 1, sycl_sint16, sycl_r, class int16_3d>
+  //              ({64, 32, 64}, {4, 2, 4});
 #endif
+  // clang-format on
   return valid;
 }
 //----------------------------------------------------------------------------//
