@@ -228,6 +228,7 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
               //   outAcc[id] = pix;
               // }
               outAcc[sycl::id{y, x}] = pix;
+              // outAcc[sycl::id{y, x}] = pix / static_cast<OutType>(2);
             } else {
               size_t x = it.get_global_id(0);
 
