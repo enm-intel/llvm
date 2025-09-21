@@ -350,9 +350,9 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
 //                 << "]! Expected: " << prevExp << ", Actual: " << prevVal
 //                 << "\n";
 //     }
-    prevExp = expect;
-    prevVal = value;
-    prevMismatch = mismatch;
+    // prevExp = expect;
+    // prevVal = value;
+    // prevMismatch = mismatch;
 // #endif
   }
   if (validated) {
