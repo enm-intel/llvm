@@ -66,42 +66,14 @@ using namespace jit_compiler;
 
 namespace {
 
-class HashPreprocessedAction : public PreprocessorFrontendAction {
-protected:
-  void ExecuteAction() override {
-    CompilerInstance &CI = getCompilerInstance();
-
-    std::string PreprocessedSource;
-    raw_string_ostream PreprocessStream(PreprocessedSource);
-
-    PreprocessorOutputOptions Opts;
-    Opts.ShowCPP = 1;
-    Opts.MinimizeWhitespace = 1;
-    // Make cache key insensitive to virtual source file and header locations.
-    Opts.ShowLineMarkers = 0;
-
-    DoPrintPreprocessedInput(CI.getPreprocessor(), &PreprocessStream, Opts);
-
-    Hash = BLAKE3::hash(arrayRefFromStringRef(PreprocessedSource));
-    Executed = true;
-  }
-
-public:
-  BLAKE3Result<> takeHash() {
-    assert(Executed);
-    Executed = false;
-    return std::move(Hash);
-  }
-
-private:
-  BLAKE3Result<> Hash;
-  bool Executed = false;
-};
-
 class SYCLToolchain {
   SYCLToolchain() {
+    using namespace jit_compiler::resource;
+
     for (size_t i = 0; i < NumToolchainFiles; ++i) {
-      auto [Path, Content] = ToolchainFiles[i];
+      resource_file RF = ToolchainFiles[i];
+      std::string_view Path{RF.Path.S, RF.Path.Size};
+      std::string_view Content{RF.Content.S, RF.Content.Size};
       ToolchainFS->addFile(Path, 0, llvm::MemoryBuffer::getMemBuffer(Content));
     }
   }
@@ -196,12 +168,14 @@ public:
     return std::move(Lib);
   }
 
+  std::string_view getPrefix() const { return Prefix; }
   std::string_view getClangXXExe() const { return ClangXXExe; }
 
 private:
   clang::IgnoringDiagConsumer IgnoreDiag;
-  std::string ClangXXExe =
-      (jit_compiler::ToolchainPrefix + "/bin/clang++").str();
+  std::string_view Prefix{jit_compiler::resource::ToolchainPrefix.S,
+                          jit_compiler::resource::ToolchainPrefix.Size};
+  std::string ClangXXExe = (Prefix + "/bin/clang++").str();
   llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> ToolchainFS =
       llvm::makeIntrusiveRefCnt<llvm::vfs::InMemoryFileSystem>();
 };
@@ -312,28 +286,54 @@ Expected<std::string> jit_compiler::calculateHash(
   std::vector<std::string> CommandLine =
       createCommandLine(UserArgList, Format, SourceFile.Path);
 
-  HashPreprocessedAction HashAction;
+  class HashPreprocessedAction : public PreprocessorFrontendAction {
+  protected:
+    void ExecuteAction() override {
+      CompilerInstance &CI = getCompilerInstance();
 
-  if (SYCLToolchain::instance().run(CommandLine, HashAction,
-                                    getInMemoryFS(SourceFile, IncludeFiles))) {
-    BLAKE3Result<> SourceHash = HashAction.takeHash();
-    // Last argument is the source file in the format `rtc_N.cpp` which is
-    // unique for each query, so drop it:
-    CommandLine.pop_back();
+      std::string PreprocessedSource;
+      raw_string_ostream PreprocessStream(PreprocessedSource);
 
-    // TODO: Include hash of the current libsycl-jit.so/.dll somehow...
-    BLAKE3Result<> CommandLineHash =
-        BLAKE3::hash(arrayRefFromStringRef(join(CommandLine, ",")));
+      PreprocessorOutputOptions Opts;
+      Opts.ShowCPP = 1;
+      Opts.MinimizeWhitespace = 1;
+      // Make cache key insensitive to virtual source file and header locations.
+      Opts.ShowLineMarkers = 0;
 
-    std::string EncodedHash =
-        encodeBase64(SourceHash) + encodeBase64(CommandLineHash);
-    // Make the encoding filesystem-friendly.
-    std::replace(EncodedHash.begin(), EncodedHash.end(), '/', '-');
-    return std::move(EncodedHash);
+      DoPrintPreprocessedInput(CI.getPreprocessor(), &PreprocessStream, Opts);
 
-  } else {
+      Hasher.update(PreprocessedSource);
+    }
+
+  public:
+    HashPreprocessedAction(BLAKE3 &Hasher) : Hasher(Hasher) {}
+
+  private:
+    BLAKE3 &Hasher;
+  };
+
+  BLAKE3 Hasher;
+  HashPreprocessedAction HashAction{Hasher};
+
+  if (!SYCLToolchain::instance().run(CommandLine, HashAction,
+                                     getInMemoryFS(SourceFile, IncludeFiles)))
     return createStringError("Calculating source hash failed");
-  }
+
+  Hasher.update(CLANG_VERSION_STRING);
+  Hasher.update(
+      ArrayRef<uint8_t>{reinterpret_cast<const uint8_t *>(&Format),
+                        reinterpret_cast<const uint8_t *>(&Format + 1)});
+
+  // Last argument is "rtc_N.cpp" source file name which is never the same,
+  // ignore it:
+  for (auto &Opt : drop_end(CommandLine, 1))
+    Hasher.update(Opt);
+
+  std::string EncodedHash = encodeBase64(Hasher.result());
+
+  // Make the encoding filesystem-friendly.
+  std::replace(EncodedHash.begin(), EncodedHash.end(), '/', '-');
+  return std::move(EncodedHash);
 }
 
 Expected<ModuleUPtr> jit_compiler::compileDeviceCode(
@@ -500,7 +500,7 @@ Error jit_compiler::linkDeviceLibraries(llvm::Module &Module,
   LLVMContext &Context = Module.getContext();
   for (const std::string &LibName : LibNames) {
     std::string LibPath =
-        (jit_compiler::ToolchainPrefix + "/lib/" + LibName).str();
+        (SYCLToolchain::instance().getPrefix() + "/lib/" + LibName).str();
 
     ModuleUPtr LibModule;
     if (auto Error = SYCLToolchain::instance()
@@ -519,7 +519,7 @@ Error jit_compiler::linkDeviceLibraries(llvm::Module &Module,
   // For GPU targets we need to link against vendor provided libdevice.
   if (IsCudaHIP) {
     Triple T{Module.getTargetTriple()};
-    Driver D{(jit_compiler::ToolchainPrefix + "/bin/clang++").str(),
+    Driver D{(SYCLToolchain::instance().getPrefix() + "/bin/clang++").str(),
              T.getTriple(), Diags};
     auto [CPU, Features] =
         Translator::getTargetCPUAndFeatureAttrs(&Module, "", Format);
@@ -765,7 +765,7 @@ jit_compiler::performPostLink(ModuleUPtr Module,
     auto &Ctx = Modules.front()->getContext();
     auto WrapLibraryInDevImg = [&](const std::string &LibName) -> Error {
       std::string LibPath =
-          (jit_compiler::ToolchainPrefix + "/lib/" + LibName).str();
+          (SYCLToolchain::instance().getPrefix() + "/lib/" + LibName).str();
       ModuleUPtr LibModule;
       if (auto Error = SYCLToolchain::instance()
                            .loadBitcodeLibrary(LibPath, Ctx)
@@ -813,11 +813,12 @@ jit_compiler::parseUserArgs(View<const char *> UserArgs) {
   // Check for options that are unsupported because they would interfere with
   // the in-memory pipeline.
   Arg *UnsupportedArg =
-      AL.getLastArg(OPT_Action_Group,     // Actions like -c or -S
-                    OPT_Link_Group,       // Linker flags
-                    OPT_o,                // Output file
-                    OPT_fsycl_targets_EQ, // AoT compilation
-                    OPT_fsycl_link_EQ,    // SYCL linker
+      AL.getLastArg(OPT_Action_Group,       // Actions like -c or -S
+                    OPT_Link_Group,         // Linker flags
+                    OPT_o,                  // Output file
+                    OPT_fsycl_targets_EQ,   // AoT compilation
+                    OPT_offload_targets_EQ, // AoT compilation
+                    OPT_fsycl_link_EQ,      // SYCL linker
                     OPT_fno_sycl_device_code_split_esimd, // invoke_simd
                     OPT_fsanitize_EQ                      // Sanitizer
       );
