@@ -16,8 +16,11 @@
 #include "../helpers/common.hpp"
 #include "utils.hpp"
 
-#include <sycl/sycl.hpp>
+// #include <sycl/sycl.hpp>
 #include <sycl/ext/oneapi/bindless_images.hpp>
+
+#include <iostream> // for std::cout
+#include <iomanip>  // for std::setw
 
 #define DEBUG_SAMPLED_IMG 1
 #ifdef VERBOSE_PRINT
@@ -107,29 +110,29 @@ handles_t create_test_handles(
 template <typename InteropHandleT, typename InteropSemHandleT, uint32_t NDims,
           typename DType, uint32_t NChannels, sycl::image_channel_type CType,
           typename KernelName>
-bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
-              InteropHandleT inputInteropMemHandle,
+bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> imgDims,
+              Dims3D<NDims> grpDims, InteropHandleT inputInteropMemHandle,
               InteropSemHandleT sycl_wait_semaphore_handle) {
   auto dev = syclQueue.get_device();
   auto ctxt = syclQueue.get_context();
 
   // Image descriptor - mapped to Vulkan image layout
-  syclexp::image_descriptor desc(dims.to_sycl_range(), NChannels, CType);
+  syclexp::image_descriptor desc(imgDims, NChannels, CType);
 
   syclexp::bindless_image_sampler samp(
       sycl::addressing_mode::repeat,
       sycl::coordinate_normalization_mode::normalized,
       sycl::filtering_mode::linear);
 
-  const size_t numElems = dims.size();
+  const size_t numElems = imgDims.size();
   const size_t img_size = numElems * sizeof(DType) * NChannels;
 
-  const size_t wdth = dims.wdth;
-  const size_t hght = dims.hght;
-  const size_t dpth = dims.dpth;
+  const size_t wdth = imgDims.wdth;
+  const size_t hght = imgDims.hght;
+  const size_t dpth = imgDims.dpth;
 
-  sycl::range<NDims> syclDim = dims.to_flip_range();
-  sycl::range<NDims> syclGrp = grpSize.to_flip_range();
+  sycl::range<NDims> syclDim = imgDims.to_flip_range();
+  sycl::range<NDims> syclGrp = grpDims.to_flip_range();
 
   using OutType = typename OutputType<DType, CType>::type;
   using VecType = sycl::vec<OutType, NChannels>;
@@ -150,9 +153,9 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
   std::cout << "\timage size: " << wdth << "(w)";
   if constexpr (NDims >= 2) std::cout << " x " << hght << "(h)";
   if constexpr (NDims == 3) std::cout << " x " << dpth << "(d)";
-  std::cout << " -> group size: " << grpSize.wdth << "(w)";
-  if constexpr (NDims >= 2) std::cout << " x " << grpSize.hght << "(h)";
-  if constexpr (NDims == 3) std::cout << " x " << grpSize.dpth << "(d)";
+  std::cout << " -> group size: " << grpDims.wdth << "(w)";
+  if constexpr (NDims >= 2) std::cout << " x " << grpDims.hght << "(h)";
+  if constexpr (NDims == 3) std::cout << " x " << grpDims.dpth << "(d)";
   std::cout << "\n";
   std::cout << "\t# elements: " << numElems << "\n";
   std::cout << "\t# channels: " << NChannels << "\n";
@@ -166,7 +169,7 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
   try {
     sycl::buffer<VecType, NDims> buf((VecType *)out.data(), syclDim);
     syclQueue.submit([&](sycl::handler &cgh) {
-      sycl::stream str(786432, 48, cgh);
+      // sycl::stream str(786432, 48, cgh);
       auto outAcc = buf.template get_access<sycl::access_mode::write>(
           cgh, syclDim);
       cgh.parallel_for<KernelName>(
@@ -278,59 +281,82 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
   VecType prevVal = out[0];
   VecType prevExp = prevVal;
 
-// # if VERBOSE_DEBUG
-//   std::cout << "   ";
-//   for (uint32_t x = 0; x < wdth; ++x) {
-//     uint32_t x_m = x % 64;
-//     if (x_m < 3 || x_m >= 61) std::cout << " " << std::setw(6) << x;
-//   }
-// #endif // VERBOSE_DEBUG
-# endif // VERBOSE_PRINT
+#if VERBOSE_DEBUG
+  constexpr bool shortSeg = (sizeof(DType) * NChannels > 8);
+  constexpr uint32_t segW = (shortSeg ? 64 : 128);
+  const char *horzSeg = shortSeg ? "---------------------------------------------+"
+                                 : "-------------------------------------------------------------------------------------------+";
+  const char *skipSeg = shortSeg ? "    .      .      .          .      .      . |"
+                                 : "    .      .      .          .      .      .      .      .      .          .      .      . |";
+  const uint32_t numSegs = wdth / segW;
+  const bool skipX = (wdth >= 64);
+  const bool segsX = (wdth >= segW);
+  const bool segsY = (hght >= 32);
+  std::cout << "   ";
+  for (uint32_t x = 0; x < wdth; ++x) {
+    uint32_t x_m = x % 64;
+    if (!skipX || x_m < 3 || x_m >= 61) std::cout << " " << std::setw(6) << x;
+    else if (x_m == 3) std::cout << " ...";
+  }
+#endif // VERBOSE_DEBUG
+#endif // VERBOSE_PRINT
 
   for (size_t i = 0; i < numElems; i++) {
-# if VERBOSE_DEBUG
-    // uint32_t x = static_cast<uint32_t>(i % wdth);
-    // uint32_t y = static_cast<uint32_t>(i / wdth);
-    // uint32_t x_m = x % 64;
-    // uint32_t y_m = y % 32;
-# endif // VERBOSE_DEBUG
+#if VERBOSE_DEBUG
+    uint32_t x = static_cast<uint32_t>(i % wdth);
+    uint32_t y = static_cast<uint32_t>(i / wdth);
+    uint32_t x_m = x % 64;
+    uint32_t y_m = y % 32;
+#endif // VERBOSE_DEBUG
     bool mismatch = false;
     VecType value = out[i];
     VecType expect =
         bindless_helpers::init_vector<OutType, NChannels>(getExpectedValue(i));
-/*
 #if VERBOSE_DEBUG
-    if (y_m < 3 || y_m >= 29) {
+    uint32_t val = static_cast<uint32_t>(value[0]);
+    if (!segsY || y_m < 3 || y_m >= 29) {
       if (x == 0) {
-        std::cout << "\n";
         if (y_m == 0) {
-          std::cout << "   +";
-          if (sizeof(DType) * NChannels > 8) {
-            for (uint32_t x = 0; x < (wdth / 64); ++x) {
-              std::cout << "---------------------------------------------+";
-            }
-          }
+          std::cout << "\n   +";
+          if (segsX)
+            for (uint32_t x = 0; x < numSegs; ++x) std::cout << horzSeg;
           else {
-            for (uint32_t x = 0; x < (wdth / 128); ++x) {
-              std::cout << "-------------------------------------------------------------------------------------------+";
+            std::cout << "------";
+            for (uint32_t x = 1; x < wdth; ++x) {
+              uint32_t x_m = x % 64;
+              if (!skipX || x_m < 3 || x_m >= 61) std::cout << "-------";
+              else std::cout << "----";
             }
+            std::cout << "+";
           }
-          std::cout << "\n";
         }
-        std::cout << std::setw(3) << y << "|" << std::setw(6) << value[0];
+        std::cout << "\n" << std::setw(3) << y << "|" << std::setw(6) << val;
       } else {
-        if (x_m < 3 || x_m >= 61) {
-          if (value[0] - prevVal[0] > 1) std::cout << "|";
-          else std::cout << " ";
-          std::cout << std::setw(6) << value[0];
-          if (x == wdth - 1) std::cout << "|";
+        if (skipX || segsX){
+          if (x_m < 3 || x_m >= 61) {
+            std::cout << ((value[0] - prevVal[0] > 1) ? '|' : ' ')
+                      << std::setw(6) << val;
+          } else if (x_m == 3) std::cout << " ...";
         }
-        else if (x_m == 3) std::cout << " ...";
+        else std::cout << " " << std::setw(6) << val;
+        if (x == wdth - 1) std::cout << "|";
       }
     }
-    else if (y_m < 6 && x == 0) std::cout << "\n . |   .";
-#endif  
-*/
+    else if (y_m < 6 && x == 0) {
+      std::cout << "\n . |";
+      if (segsX)
+        for (uint32_t x = 0; x < numSegs; ++x) std::cout << skipSeg;
+      else {
+        std::cout << "    . ";
+        for (uint32_t x = 1; x < wdth; ++x) {
+          uint32_t x_m = x % 64;
+          if (!skipX || x_m < 3 || x_m >= 61) std::cout << "     . ";
+          else std::cout << "    ";
+        }
+        std::cout << "|";
+      }
+    }
+#endif // VERBOSE_DEBUG
     if (!bindless_helpers::equal_vec<OutType, NChannels>(value, expect)) {
       mismatch = true;
       validated = false;
@@ -338,42 +364,61 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
 
     if (mismatch) {
 #ifdef VERBOSE_PRINT
-      // if (!prevMismatch) {
-      //   uint32_t x = static_cast<uint32_t>(i % wdth);
-      //   uint32_t y = static_cast<uint32_t>(i / wdth);
-      //   std::cout << "Result mismatch [(x,y) = (" << std::setw(3) << x << ", "
-      //             << std::setw(3) << y << ") : idx = " << std::setw(5) << i
-      //             << "]! Expected: " << expect << ", Actual: " << value
-      //             << "\n";
-      // }
+#if !VERBOSE_DEBUG
+      if (!prevMismatch) {
+        uint32_t x = static_cast<uint32_t>(i % wdth);
+        uint32_t y = static_cast<uint32_t>(i / wdth);
+        std::cout << "Result mismatch [(x,y) = (" << std::setw(3) << x << ", "
+                  << std::setw(3) << y << ") : idx = " << std::setw(5) << i
+                  << "]! Expected: " << expect << ", Actual: " << value
+                  << "\n";
+      }
+#endif // !VERBOSE_DEBUG
 #else
       break;
 #endif
     }
 #ifdef VERBOSE_PRINT
-//     else if (prevMismatch) {
-//       size_t prv_i = (i - 1);
-//       uint32_t x = static_cast<uint32_t>(prv_i % wdth);
-//       uint32_t y = static_cast<uint32_t>(prv_i / wdth);
-//       std::cout << "... All results in between also mismatched.\n";
-//       std::cout << "Result mismatch [(x,y) = (" << std::setw(3) << x << ", "
-//                 << std::setw(3) << y << ") : idx = " << std::setw(5) << prv_i
-//                 << "]! Expected: " << prevExp << ", Actual: " << prevVal
-//                 << "\n";
-//     }
+#if !VERBOSE_DEBUG
+    else if (prevMismatch) {
+      size_t prv_i = (i - 1);
+      uint32_t x = static_cast<uint32_t>(prv_i % wdth);
+      uint32_t y = static_cast<uint32_t>(prv_i / wdth);
+      std::cout << "... All results in between also mismatched.\n";
+      std::cout << "Result mismatch [(x,y) = (" << std::setw(3) << x << ", "
+                << std::setw(3) << y << ") : idx = " << std::setw(5) << prv_i
+                << "]! Expected: " << prevExp << ", Actual: " << prevVal
+                << "\n";
+    }
+#endif // !VERBOSE_DEBUG
     prevExp = expect;
     prevVal = value;
     prevMismatch = mismatch;
 #endif
   }
 #ifdef VERBOSE_PRINT
+#if VERBOSE_DEBUG
+  std::cout << "\n   +";
+  if (segsX)
+    for (uint32_t x = 0; x < numSegs; ++x) std::cout << horzSeg;
+  else {
+    std::cout << "------";
+    for (uint32_t x = 1; x < wdth; ++x) {
+      uint32_t x_m = x % 64;
+      if (!skipX || x_m < 3 || x_m >= 61) std::cout << "-------";
+      else std::cout << "----";
+    }
+    std::cout << "+";
+  }
+  std::cout << "\n";
+#endif  
   if (validated) {
     std::cout << "\tTest passed: NDims " << NDims << " NChannels " << NChannels
               << " image_channel_type "
               << bindless_helpers::channelTypeToString(CType) << "\n";
   }
   else {
-    std::cout << "\n\tTest FAILED: NDims " << NDims << " NChannels " << NChannels
+    std::cout << "\tTest FAILED: NDims " << NDims << " NChannels " << NChannels
               << " image_channel_type "
               << bindless_helpers::channelTypeToString(CType) << "\n";
   }
@@ -385,7 +430,7 @@ bool run_sycl(sycl::queue syclQueue, Dims3D<NDims> dims, Dims3D<NDims> grpSize,
 template <uint32_t NDims, typename DType, uint32_t NChannels,
           sycl::image_channel_type CType, sycl::image_channel_order COrder,
           typename KernelName>
-bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
+bool run_test(Dims3D<NDims> imgDims, Dims3D<NDims> grpDims) {
   using OutType = typename OutputType<DType, CType>::type;
   using VecType = sycl::vec<OutType, NChannels>;
 
@@ -405,10 +450,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
     return true;
   }
 
-  uint32_t w = dims.wdth;
-  uint32_t h = dims.hght;
-  uint32_t d = dims.dpth;
-  VkExtent3D vkExtent = {w, h, d};
+  VkExtent3D vkExtent = {imgDims.wdth, imgDims.hght, imgDims.dpth};
 
   sycl::queue syclQueue;
 
@@ -422,7 +464,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   // Verify SYCL device support for allocating/creating an image from the
   // descriptor being tested.
   // This test always maps to an `image_mem_handle` (opaque_handle).
-  syclexp::image_descriptor desc{dims, NChannels, CType};
+  syclexp::image_descriptor desc{imgDims, NChannels, CType};
   if (!bindless_helpers::memoryAllocationSupported(
           desc, syclexp::image_memory_handle_type::opaque_handle, syclQueue)) {
     // The device does not support allocating/creating the image with the given
@@ -431,7 +473,7 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
     return true;
   }
 
-  size_t numElems = dims.num_elems();
+  size_t numElems = imgDims.num_elems();
   constexpr VkImageType imgTypes[] = {VK_IMAGE_TYPE_1D, VK_IMAGE_TYPE_2D,
                                       VK_IMAGE_TYPE_3D};
   constexpr VkImageType imgType = imgTypes[NDims - 1];
@@ -440,16 +482,19 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   const size_t imgBytes = numElems * NChannels * sizeof(DType);
 
   printString("Creating input image");
-// #if VERBOSE_DEBUG
-//   std::cout << "\timage size: " << w << "(w)";
-//   if constexpr (NDims >= 2) std::cout << " x " << h << "(h)";
-//   if constexpr (NDims == 3) std::cout << " x " << d << "(d)";
+#if VERBOSE_DEBUG
+  uint32_t wdth = imgDims.wdth;
+  uint32_t hght = imgDims.hght;
+  uint32_t dpth = imgDims.dpth;
+//   std::cout << "\timage size: " << wdth << "(w)";
+//   if constexpr (NDims >= 2) std::cout << " x " << hght << "(h)";
+//   if constexpr (NDims == 3) std::cout << " x " << dpth << "(d)";
 //   std::cout << "\n";
 //   std::cout << "\t# elements: " << numElems << "\n";
 //   std::cout << "\t# channels: " << NChannels << "\n";
 //   std::cout << "\telem size : " << sizeof(DType) << "\n";
 //   std::cout << "\t# bytes   : " << imgBytes << "\n";
-// #endif
+#endif
 
   // Create input image memory
   constexpr VkImageUsageFlags imgFlags = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
@@ -494,68 +539,99 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
       i %= static_cast<uint64_t>(std::numeric_limits<DType>::max()) + 1;
     return static_cast<DType>(i);
   };
-// #if VERBOSE_DEBUG
-//   std::cout << "   ";
-//   for (uint32_t x = 0; x < w; ++x) {
-//     uint32_t x_m = x % 64;
-//     if (x_m < 3 || x_m >= 61) std::cout << " " << std::setw(6) << x;
-//   }
-// #endif
+#if VERBOSE_DEBUG
+  constexpr bool shortSeg = (sizeof(DType) * NChannels > 8);
+  constexpr uint32_t segW = (shortSeg ? 64 : 128);
+  const char *horzSeg = shortSeg ? "---------------------------------------------+"
+                                 : "-------------------------------------------------------------------------------------------+";
+  const char *skipSeg = shortSeg ? "    .      .      .          .      .      . |"
+                                 : "    .      .      .          .      .      .      .      .      .          .      .      . |";
+  const uint32_t numSegs = wdth / segW;
+  const bool skipX = (wdth >= 64);
+  const bool segsX = (wdth >= segW);
+  const bool segsY = (hght >= 32);
+  std::cout << "   ";
+  for (uint32_t x = 0; x < wdth; ++x) {
+    uint32_t x_m = x % 64;
+    if (!skipX || x_m < 3 || x_m >= 61) std::cout << " " << std::setw(6) << x;
+    else if (x_m == 3) std::cout << " ...";
+  }
+#endif
   { DType *p = stagingData;
     for (size_t i = 0; i < numElems; ++i) {
       DType v = getInputValue(i);
-/*
 #if VERBOSE_DEBUG
-      uint32_t x = static_cast<uint32_t>(i % w);
-      uint32_t y = static_cast<uint32_t>(i / w);
+      uint32_t val = static_cast<uint32_t>(v);
+      uint32_t x = static_cast<uint32_t>(i % wdth);
+      uint32_t y = static_cast<uint32_t>(i / wdth);
       uint32_t x_m = x % 64;
       uint32_t y_m = y % 32;
-      if (y_m < 3 || y_m >= 29) {
+      if (!segsY || y_m < 3 || y_m >= 29) {
         if (x == 0) {
-          std::cout << "\n";
           if (y_m == 0) {
-            std::cout << "   +";
-            if (sizeof(DType) * NChannels > 8) {
-              for (uint32_t x = 0; x < (w / 64); ++x) {
-                std::cout << "---------------------------------------------+";
-              }
-            }
+            std::cout << "\n   +";
+            if (segsX)
+              for (uint32_t x = 0; x < numSegs; ++x) std::cout << horzSeg;
             else {
-              for (uint32_t x = 0; x < (w / 128); ++x) {
-                std::cout << "-------------------------------------------------------------------------------------------+";
+              std::cout << "------";
+              for (uint32_t x = 1; x < wdth; ++x) {
+                uint32_t x_m = x % 64;
+                if (!skipX || x_m < 3 || x_m >= 61) std::cout << "-------";
+                else std::cout << "----";
               }
+              std::cout << "+";
             }
-            std::cout << "\n";
           }
-          std::cout << std::setw(3) << y << "|" << std::setw(6) << v;
+          std::cout << "\n" << std::setw(3) << y << "|" << std::setw(6) << val;
         }
         else {
-          if (x_m < 3 || x_m >= 61) {
-            if (x_m == 0 && (x % 128 == 0 || sizeof(DType) * NChannels > 8))
-              std::cout << "|";
-            else std::cout << " ";
-            std::cout << std::setw(6) << v;
+          if (skipX || segsX){
+            if (x_m < 3 || x_m >= 61) {
+              if (segsX && x_m == 0 && (shortSeg || x % 128 == 0))
+                std::cout << "|";
+              else std::cout << " ";
+              std::cout << std::setw(6) << val;
+            }
+            else if (x_m == 3) std::cout << " ...";
           }
-          else if (x_m == 3) std::cout << " ...";
-          if (x == w - 1) std::cout << "|";
+          else std::cout << " " << std::setw(6) << val;
+          if (x == wdth - 1) std::cout << "|";
         }
       }
-      else if (y_m < 6 && x == 0) std::cout << "\n . |   .";
+      else if (y_m < 6 && x == 0) {
+        std::cout << "\n . |";
+        if (segsX)
+          for (uint32_t x = 0; x < numSegs; ++x) std::cout << skipSeg;
+        else {
+          std::cout << "    . ";
+          for (uint32_t x = 1; x < wdth; ++x) {
+            uint32_t x_m = x % 64;
+            if (!skipX || x_m < 3 || x_m >= 61) std::cout << "     . ";
+            else std::cout << "    ";
+          }
+          std::cout << "|";
+        }
+      }
 #endif  
-*/
-// #if VERBOSE_DEBUG
-//       uint32_t y = i / w;
-//       uint32_t x = i % w;
-//       if (x % 8 == 0)
-//         std::cout << "[" << std::setw(5) << i << "->("
-//                   << std::setw(3) << x << ", " << std::setw(3)
-//                   << y << ")]=" << std::setw(6) << v << " | ";
-//       if (x == w - 1) std::cout << "\n";
-// #endif
       for (int j = 0; j < NChannels; ++j) *p++ = v;
     }
   }
-  // vkUnmapMemory(vk_device, stagingMem);
+#if VERBOSE_DEBUG
+  std::cout << "\n   +";
+  if (segsX)
+    for (uint32_t x = 0; x < numSegs; ++x) std::cout << horzSeg;
+  else {
+    std::cout << "------";
+    for (uint32_t x = 1; x < wdth; ++x) {
+      uint32_t x_m = x % 64;
+      if (!skipX || x_m < 3 || x_m >= 61) std::cout << "-------";
+      else std::cout << "----";
+    }
+    std::cout << "+";
+  }
+  std::cout << "\n";
+#endif  
+  vkUnmapMemory(vk_device, stagingMem);
 
   printString("Submitting image layout transition");
   // Transition image layouts
@@ -673,11 +749,11 @@ bool run_test(Dims3D<NDims> dims, Dims3D<NDims> grpSize) {
   bool validated =
       run_sycl<decltype(input_mem_handle), decltype(sycl_wait_semaphore_handle),
                NDims, DType, NChannels, CType, KernelName>(
-          syclQueue, dims, grpSize, input_mem_handle,
+          syclQueue, imgDims, grpDims, input_mem_handle,
           sycl_wait_semaphore_handle);
 
   // Cleanup
-  vkUnmapMemory(vk_device, stagingMem);
+  // vkUnmapMemory(vk_device, stagingMem);
   vkDestroyBuffer(vk_device, stagingBuf, nullptr);
   vkDestroyImage(vk_device, srcImg, nullptr);
   vkFreeMemory(vk_device, stagingMem, nullptr);
