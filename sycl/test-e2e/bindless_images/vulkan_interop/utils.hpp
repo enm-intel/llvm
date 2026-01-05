@@ -4,7 +4,7 @@
 #include <sycl/image.hpp>  // for sycl::image_channel_type, sycl::image_channel_order
 #include <vulkan/vulkan.h> // for VkExtent3D
 
-namespace sycl_vulkan_img_utils {
+namespace sycl_vk_img_utils {
 
 // clang-format off
 // Some commonly used channel types
@@ -95,4 +95,4 @@ public:
   operator sycl_range_t() const { return to_sycl_range(); }
 };
 
-} // namespace sycl_vulkan_img_utils
+} // namespace sycl_vk_img_utils

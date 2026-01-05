@@ -7,11 +7,10 @@
 template <typename DType, int NChannels>
 std::ostream &operator<<(std::ostream &os,
                          const sycl::vec<DType, NChannels> &vec) {
-  std::string str{""};
-  for (int i = 0; i < NChannels; ++i) {
-    str += std::to_string(vec[i]) + ",";
+  std::string str = std::to_string(vec[0]);
+  for (int i = 1; i < NChannels; ++i) {
+    str += "," + std::to_string(vec[i]);
   }
-  str.pop_back();
   os << str;
   return os;
 }
@@ -23,8 +22,18 @@ namespace syclexp = sycl::ext::oneapi::experimental;
 bool memoryAllocationSupported(syclexp::image_descriptor &imgDesc,
                                syclexp::image_memory_handle_type memHandleType,
                                sycl::queue &syclQueue) {
+// #ifdef VERBOSE_PRINT
+//   std::cerr << "  Checking if memory allocation is supported for: " << static_cast<unsigned int>(memHandleType) << "\n";
+// #endif
   auto supportedMemTypes =
-      syclexp::get_image_memory_support(imgDesc, syclQueue);
+      syclexp::get_image_memory_support(imgDesc, syclQueue.get_device(), syclQueue.get_context());
+// #ifdef VERBOSE_PRINT
+//   std::cerr << "  Supported memory handle types: " << supportedMemTypes.size()
+//             << " types\n";
+//   for (const auto &type : supportedMemTypes) {
+//     std::cerr << "    - " << static_cast<unsigned int>(type) << "\n";
+//   }
+// #endif
   return std::find(supportedMemTypes.begin(), supportedMemTypes.end(),
                    memHandleType) != supportedMemTypes.end();
 }

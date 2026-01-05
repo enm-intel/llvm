@@ -12,8 +12,11 @@
 #include <sycl/properties/queue_properties.hpp>
 
 using namespace dx_helpers;
+using namespace sycl_dx_img_utils;
+
 namespace syclexp = sycl::ext::oneapi::experimental;
 
+//-==========================================================================-//
 class DX12SYCLDevice {
 public:
   DX12SYCLDevice();
@@ -22,43 +25,53 @@ public:
   DX12SYCLDevice &operator=(const DX12SYCLDevice &) = delete;
 
 private:
-  void initDX12Device();
-  void initDX12CommandList();
+  void _initDevice();
+  void _initCmdList();
 
 public:
-  ID3D12Device *getDx12Device() { return m_dx12Device.Get(); }
-  ID3D12CommandQueue *getDx12CommandQueue() { return m_dx12CommandQueue.Get(); }
-  ID3D12GraphicsCommandList *getDx12CommandList() {
-    return m_dx12CommandList.Get();
-  }
-  sycl::queue &getSyclQueue() { return m_syclQueue; }
+  ID3D12Device              *getDevice  () { return _dev.Get(); }
+  ID3D12CommandQueue        *getCmdQueue() { return _cmdQueue.Get(); }
+  ID3D12GraphicsCommandList *getCmdList () { return _cmdList.Get(); }
 
-  HRESULT resetCommandList() {
-    return m_dx12CommandList->Reset(m_dx12CommandAllocator.Get(), nullptr);
-  }
+  sycl::queue &getSyclQueue() { return _syclQueue; }
+
+  HRESULT resetCmdList() { return _cmdList->Reset(_cmdAlloc.Get(), nullptr); }
 
 private:
   // DX12 Objects
-  ComPtr<IDXGIFactory4> m_dx12Factory;
-  ComPtr<IDXGIAdapter1> m_dx12HardwareAdapter;
-  ComPtr<ID3D12Device> m_dx12Device;
-  ComPtr<ID3D12CommandQueue> m_dx12CommandQueue;
-  ComPtr<ID3D12GraphicsCommandList> m_dx12CommandList;
-  ComPtr<ID3D12CommandAllocator> m_dx12CommandAllocator;
+  ComPtr<IDXGIFactory4> _factory;
+  ComPtr<IDXGIAdapter1> _adapter;
+  
+  ComPtr<ID3D12Device> _dev;
+  
+  ComPtr<ID3D12CommandQueue>        _cmdQueue;
+  ComPtr<ID3D12GraphicsCommandList> _cmdList;
+  ComPtr<ID3D12CommandAllocator>    _cmdAlloc;
 
   // SYCL Objects
-  sycl::queue m_syclQueue;
-  sycl::device m_syclDevice;
+  sycl::queue  _syclQueue;
+  sycl::device _syclDev;
 };
+//-==========================================================================-//
 
-template <int NDims, typename DType, int NChannels> class DX12InteropTest {
+//-==========================================================================-//
+template <uint32_t NDims, typename DType, uint32_t NChannels>
+class DX12Interop {
+
+  using VecType = sycl::vec<DType, NChannels>;
+  
+  static constexpr uint32_t PixSize = VecType::byte_size();
+
+  static_assert(NDims >= 1 && NDims <= 3, "NDims must be 1, 2, or 3.");
+  static_assert(PixSize == sizeof(DType) * NChannels);
+
 public:
-  DX12InteropTest(DX12SYCLDevice &device, sycl::image_channel_type channelType,
-                  sycl::range<NDims> globalSize, sycl::range<NDims> localSize);
+  DX12Interop(DX12SYCLDevice &device, sycl::image_channel_type channelType,
+              Dims3D<NDims> imgDims, Dims3D<NDims> grpDims);
 
-  ~DX12InteropTest() {}
+  ~DX12Interop() {}
 
-  void initDX12Resources();
+  void init();
   void cleanupDX12();
 
   void callSYCLKernel();
@@ -66,39 +79,41 @@ public:
   bool validateOutput();
 
 private:
-  void waitDX12Fence(DWORD timeoutMilliseconds = INFINITE);
+  void waitFence(DWORD msTimeout = INFINITE);
   void populateDX12Texture();
-  void importDX12SharedMemoryHandle(size_t allocSize);
-  void importDX12SharedSemaphoreHandle();
+  void importSharedMemHandle(size_t allocSize);
+  void importSharedSemaphore();
 
   // Dimensions of image
-  uint32_t m_width;
-  uint32_t m_height;
-  uint32_t m_depth;
-  uint32_t m_numElems;
+  std::vector<DType> m_srcData;
 
-  std::vector<DType> m_inputData;
+  Dims3D<NDims> _imgDims{};
+  Dims3D<NDims> _grpDims{};
+  uint64_t _pixels{1};
+  uint64_t _numElems{NChannels};
+  uint64_t _dataSize{sizeof(DType) * NChannels};
 
-  sycl::image_channel_type m_channelType;
+  sycl::image_channel_type m_elemType;
 
-  sycl::range<NDims> m_globalSize;
-  sycl::range<NDims> m_localSize;
+  // sycl::range<NDims> m_dataDims;
+  // sycl::range<NDims> m_localSize;
 
   DX12SYCLDevice &m_device;
 
   // DX12 Objects
-  ComPtr<ID3D12Resource> m_dx12Texture;
-  ComPtr<ID3D12Fence> m_dx12Fence;
-  HANDLE m_dx12FenceEvent;
+  ComPtr<ID3D12Resource> _texture;
+  ComPtr<ID3D12Fence>    _fence;
+  HANDLE                 _fenceEvent;
+  std::atomic<uint64_t>  _fenceVal{0};
 
   // Shared handles and values
-  uint64_t m_sharedFenceValue = 0;
-  HANDLE m_sharedMemoryHandle = INVALID_HANDLE_VALUE;
-  HANDLE m_sharedSemaphoreHandle = INVALID_HANDLE_VALUE;
+  HANDLE _memHandle{INVALID_HANDLE_VALUE};
+  HANDLE _semaphore{INVALID_HANDLE_VALUE};
 
   // SYCL Objects
-  syclexp::external_mem m_syclExternalMemHandle;
-  syclexp::external_semaphore m_syclExternalSemaphoreHandle;
-  syclexp::image_mem_handle m_syclImageMemHandle;
-  syclexp::unsampled_image_handle m_syclImageHandle;
+  syclexp::external_mem           _syclMemHandle;
+  syclexp::external_semaphore     _syclSemaphore;
+  syclexp::image_mem_handle       _syclImgMem;
+  syclexp::unsampled_image_handle _syclImgHandle;
 };
+//-==========================================================================-//

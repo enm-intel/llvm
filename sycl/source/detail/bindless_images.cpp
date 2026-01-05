@@ -853,10 +853,12 @@ get_image_memory_support(const image_descriptor &imageDescriptor,
                          const sycl::context &syclContext) {
   auto [urDevice, urCtx, Adapter] = get_ur_handles(syclDevice, syclContext);
 
+  // std::cerr << "  Get image memory support (1)\n";
   ur_image_desc_t urDesc;
   ur_image_format_t urFormat;
   populate_ur_structs(imageDescriptor, urDesc, urFormat);
 
+  // std::cerr << "  Get image memory support (2)\n";
   ur_bool_t supportsPointerAllocation{0};
   Adapter->call<sycl::errc::runtime,
                 sycl::detail::UrApiKind::
@@ -865,6 +867,7 @@ get_image_memory_support(const image_descriptor &imageDescriptor,
       ur_exp_image_mem_type_t::UR_EXP_IMAGE_MEM_TYPE_USM_POINTER,
       &supportsPointerAllocation);
 
+  // std::cerr << "  Get image memory support (3)\n";
   ur_bool_t supportsOpaqueAllocation{0};
   Adapter->call<sycl::errc::runtime,
                 sycl::detail::UrApiKind::
@@ -873,6 +876,7 @@ get_image_memory_support(const image_descriptor &imageDescriptor,
       ur_exp_image_mem_type_t::UR_EXP_IMAGE_MEM_TYPE_OPAQUE_HANDLE,
       &supportsOpaqueAllocation);
 
+  // std::cerr << "  Get image memory support (4)\n";
   std::vector<image_memory_handle_type> supportedMemHandleTypes;
 
   if (supportsPointerAllocation) {
@@ -883,6 +887,7 @@ get_image_memory_support(const image_descriptor &imageDescriptor,
     supportedMemHandleTypes.push_back(image_memory_handle_type::opaque_handle);
   }
 
+  // std::cerr << "  Get image memory support (5)\n";
   return supportedMemHandleTypes;
 }
 

@@ -17,10 +17,11 @@ using namespace dx_helpers;
 namespace dx11_interop {
 
 /// @brief
-struct D3D11ProgramState {
+//-==========================================================================-//
+struct DX11State {
   // device management
   ID3D11Device *device{nullptr};
-  ID3D11DeviceContext *deviceContext{nullptr};
+  ID3D11DeviceContext *contxt{nullptr};
 
   // Temporary, this is to be replaced by LUID.
   // Can also store a DXGI_ADAPTER_DESC if more state is needed.
@@ -29,11 +30,11 @@ struct D3D11ProgramState {
   // Keyed mutex ID for synchronizing access to the shared resource.
   std::atomic<UINT64> key;
 
-  D3D11ProgramState(const sycl::device &syclDevice);
-  ~D3D11ProgramState();
+  DX11State(const sycl::device &syclDevice);
+  ~DX11State();
 };
-
-D3D11ProgramState::D3D11ProgramState(const sycl::device &syclDevice) {
+//----------------------------------------------------------------------------//
+DX11State::DX11State(const sycl::device &syclDevice) {
   UINT dxgiFactoryFlags = 0;
 #if WITH_DX_DEBUG
   dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
@@ -55,7 +56,7 @@ D3D11ProgramState::D3D11ProgramState(const sycl::device &syclDevice) {
   ThrowIfFailed(D3D11CreateDevice(hardwareAdapter.Get(),
                                   D3D_DRIVER_TYPE_UNKNOWN, nullptr, deviceFlags,
                                   &requestedFeatureLevel, 1, D3D11_SDK_VERSION,
-                                  &device, &featureLevel, &deviceContext));
+                                  &device, &featureLevel, &contxt));
 
   // Get the description of the adapter which contains the LUID, etc.
   DXGI_ADAPTER_DESC1 adapterDesc;
@@ -63,13 +64,12 @@ D3D11ProgramState::D3D11ProgramState(const sycl::device &syclDevice) {
 
   deviceName = getD3DDeviceName(adapterDesc);
 }
-
-D3D11ProgramState::~D3D11ProgramState() {
-  if (device)
-    device->Release();
-  if (deviceContext)
-    deviceContext->Release();
+//----------------------------------------------------------------------------//
+DX11State::~DX11State() {
+  if (device) device->Release();
+  if (contxt) contxt->Release();
 }
+//-==========================================================================-//
 
 } // namespace dx11_interop
 

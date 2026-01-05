@@ -31,7 +31,7 @@
 
 namespace syclexp = sycl::ext::oneapi::experimental;
 
-using namespace sycl_vulkan_img_utils;
+using namespace sycl_vk_img_utils;
 
 //-==========================================================================-//
 struct handles_t {
