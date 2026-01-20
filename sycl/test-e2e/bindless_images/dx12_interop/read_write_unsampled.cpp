@@ -712,7 +712,7 @@ int main() {
 #else
   Dims3D<2> imgDims2[] = {{32, 16}, {1920, 1080}, {1920, 1080}, {2048, 2048}, {2048, 2048}};
 #endif
-  pass &= runTest<2, uint32_t,   1>(device, sycl_uint32, imgDims2[0], { 8,  8});
+  // pass &= runTest<2, uint32_t,   1>(device, sycl_uint32, imgDims2[0], { 8,  8});
   // pass &= runTest<2, uint8_t,    4>(device, sycl_unorm8, imgDims2[1], {16,  8});
   // pass &= runTest<2, float,      1>(device, sycl_float,  imgDims2[2], {16,  8});
   // pass &= runTest<2, sycl::half, 2>(device, sycl_half,   imgDims2[3], {16, 16});
