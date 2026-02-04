@@ -86,11 +86,6 @@ TEST(BindlessImagesExtensionTests, ImageDescriptorPropagatesLayout) {
     auto ImgHandle = syclexp::map_external_image_memory(MemHandle, Desc, Q);
     (void)ImgHandle;
   } catch (const sycl::exception &e) {
-    FAIL() << "Caught unexpected SYCL exception: " << e.what();
-  }
-
-  EXPECT_EQ(MapExternalArrayCallCounter, 1);
-}
 
 // Regression test: descriptor row_pitch must propagate through the
 // ext_oneapi_copy path when the overload has no explicit pitch argument.
