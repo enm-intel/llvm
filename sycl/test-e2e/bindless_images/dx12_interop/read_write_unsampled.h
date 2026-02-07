@@ -41,8 +41,7 @@ private:
   // DX12 Objects
   ComPtr<IDXGIFactory4> _factory;
   ComPtr<IDXGIAdapter1> _adapter;
-  
-  ComPtr<ID3D12Device> _dev;
+  ComPtr<ID3D12Device3> _dev;
   
   ComPtr<ID3D12CommandQueue>        _cmdQueue;
   ComPtr<ID3D12GraphicsCommandList> _cmdList;
@@ -89,16 +88,16 @@ private:
 
   Dims3D<NDims> _imgDims{};
   Dims3D<NDims> _grpDims{};
-  uint64_t _pixels{1};
+  uint64_t _numPixs{1};
   uint64_t _numElems{NChannels};
   uint64_t _dataSize{sizeof(DType) * NChannels};
 
-  sycl::image_channel_type m_elemType;
+  sycl::image_channel_type _elemType;
 
   // sycl::range<NDims> m_dataDims;
   // sycl::range<NDims> m_localSize;
 
-  DX12SYCLDevice &m_device;
+  DX12SYCLDevice &_device;
 
   // DX12 Objects
   ComPtr<ID3D12Resource> _texture;

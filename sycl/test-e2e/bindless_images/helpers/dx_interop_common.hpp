@@ -432,6 +432,71 @@ public:
   operator sycl_range_t() const { return to_sycl_range(); }
 };
 
+template <>
+class Dims3D<1> {
+public:
+  static constexpr int dimensions = 1;
+  using sycl_range_t = sycl::range<1>;
+
+  uint32_t wdth{1};
+
+  Dims3D() = default;
+  Dims3D(const Dims3D<1> &rhs) = default;
+  Dims3D(Dims3D<1> &&rhs) = default;
+
+  // The following constructor is only available when Dims==1
+  Dims3D(uint32_t wdth) : wdth{wdth} {}
+
+  // clang-format off
+  // Compute total number of elements.
+  size_t size()      const { return static_cast<size_t>(wdth);  } 
+  size_t num_elems() const { return size(); }
+
+  // Convert to sycl::range<1>
+  // If flip is true, the order of dimensions is reversed.
+  template <bool flip = false>
+  sycl_range_t to_sycl_range() const { return sycl_range_t{wdth}; }
+  // Convert to sycl::range<1> with flipped dimensions.
+  sycl_range_t to_flip_range() const { return to_sycl_range<true>(); }
+  // clang-format on
+
+  operator sycl_range_t() const { return to_sycl_range(); }
+};
+
+template <>
+class Dims3D<2> {
+public:
+  static constexpr int dimensions = 2;
+  using sycl_range_t = sycl::range<2>;
+
+  uint32_t wdth{1};
+  uint32_t hght{1};
+
+  Dims3D() = default;
+  Dims3D(const Dims3D<2> &rhs) = default;
+  Dims3D(Dims3D<2> &&rhs) = default;
+
+  Dims3D(uint32_t wdth, uint32_t hght) : wdth{wdth}, hght{hght} {}
+
+  // clang-format off
+  // Compute total number of elements.
+  size_t size()      const { return static_cast<size_t>(wdth) * hght; } 
+  size_t num_elems() const { return size(); }
+
+  // Convert to sycl::range<2>
+  // If flip is true, the order of dimensions is reversed.
+  template <bool flip = false>
+  sycl_range_t to_sycl_range() const {
+    else if constexpr (flip) return sycl_range_t{hght, wdth};
+    else                     return sycl_range_t{wdth, hght};
+  }
+  // Convert to sycl::range<2> with flipped dimensions.
+  sycl_range_t to_flip_range() const { return to_sycl_range<true>(); }
+  // clang-format on
+
+  operator sycl_range_t() const { return to_sycl_range(); }
+};
+
 } // namespace sycl_dx_img_utils
 
 #endif // DX_INTEROP_COMMON_HPP

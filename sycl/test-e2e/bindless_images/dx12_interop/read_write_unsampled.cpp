@@ -89,10 +89,9 @@ template <uint32_t NDims, typename DType, uint32_t NChannels>
 DX12Interop<NDims, DType, NChannels>::DX12Interop(
     DX12SYCLDevice &device, sycl::image_channel_type channelType,
     Dims3D<NDims> imgDims, Dims3D<NDims> grpDims)
-    : m_device(device), m_elemType(channelType), _imgDims(imgDims),
-      _grpDims(grpDims) {
-  _pixels   =_imgDims.size();
-  _numElems =_pixels * NChannels;
+    :_device(device),_elemType(channelType),_imgDims(imgDims),_grpDims(grpDims) {
+  _numPixs  =_imgDims.size();
+  _numElems =_numPixs  * NChannels;
   _dataSize =_numElems * sizeof(DType);
 }
 //----------------------------------------------------------------------------//
@@ -117,13 +116,13 @@ void DX12Interop<NDims, DType, NChannels>::init() {
   texDesc.Height           = _imgDims.hght;
   texDesc.DepthOrArraySize = _imgDims.dpth;
   texDesc.MipLevels        = 0;
-  texDesc.Format           = toDXGIFormat<NChannels>(m_elemType);
+  texDesc.Format           = toDXGIFormat<NChannels>(_elemType);
   texDesc.SampleDesc       = DXGI_SAMPLE_DESC{1, 0};
   texDesc.Layout           = D3D12_TEXTURE_LAYOUT_UNKNOWN;
   texDesc.Flags            = D3D12_RESOURCE_FLAG_NONE;
 
   // Create the DX12 texture.
-  auto *dev = m_device.getDevice();
+  auto *dev =_device.getDevice();
   ThrowIfFailed(dev->CreateCommittedResource(
       &defltHeapProps, D3D12_HEAP_FLAG_SHARED, &texDesc,
       D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&_texture)));
@@ -169,10 +168,10 @@ void DX12Interop<NDims, DType, NChannels>::importSharedMemHandle(size_t allocSiz
       _memHandle,
       syclexp::external_mem_handle_type::win32_nt_dx12_resource, allocSize};
 
-  auto &syclQueue = m_device.getSyclQueue();
+  auto &syclQueue =_device.getSyclQueue();
   _syclMemHandle = syclexp::import_external_memory(extMemDesc, syclQueue);
 
-  syclexp::image_descriptor imgDesc{_imgDims, NChannels, m_elemType};
+  syclexp::image_descriptor imgDesc{_imgDims, NChannels, _elemType};
   _syclImgMem    = syclexp::map_external_image_memory(_syclMemHandle, imgDesc,syclQueue);
   _syclImgHandle = syclexp::create_image(_syclImgMem, imgDesc, syclQueue);
   std::cerr << "LEAVE: DX12Interop<NDims, DType, NChannels>::importSharedMemHandle(size_t)\n";
@@ -184,12 +183,12 @@ void DX12Interop<NDims, DType, NChannels>::importSharedSemaphore() {
       extSemDesc{_semaphore,
                  syclexp::external_semaphore_handle_type::win32_nt_dx12_fence};
 
-  _syclSemaphore = syclexp::import_external_semaphore(extSemDesc, m_device.getSyclQueue());
+  _syclSemaphore = syclexp::import_external_semaphore(extSemDesc,_device.getSyclQueue());
 }
 //----------------------------------------------------------------------------//
 template <uint32_t NDims, typename DType, uint32_t NChannels>
 void DX12Interop<NDims, DType, NChannels>::callSYCLKernel() {
-  auto &syclQueue = m_device.getSyclQueue();
+  auto &syclQueue =_device.getSyclQueue();
 #ifdef TEST_SEMAPHORE_IMPORT
   // Wait for imported semaphore. This semaphore was signalled at the
   // end of `populateDX12Texture`.
@@ -311,13 +310,13 @@ void DX12Interop<NDims, DType, NChannels>::populateDX12Texture() {
       i = i % (static_cast<uint64_t>(std::numeric_limits<DType>::max()) / 2);
     return i;
   };
-  for (uint64_t i = 0; i < _numElems; ++i) {
+  for (uint64_t i = 0; i <_numElems; ++i) {
     m_srcData[i] = getInputValue(i);
   }
 
   // Get required staging buffer size.
   uint64_t stagingBufferSize = 0;
-  auto *dev = m_device.getDevice();
+  auto *dev =_device.getDevice();
   dev->GetCopyableFootprints(&_texture->GetDesc(), 0, 1, 0, nullptr,
                                     nullptr, nullptr, &stagingBufferSize);
 
@@ -356,7 +355,7 @@ void DX12Interop<NDims, DType, NChannels>::populateDX12Texture() {
       0, &stagingBufferRange, reinterpret_cast<void **>(&pStagingBufferData)));
 
   // Populate the staging buffer with our upload data.
-  for (int i = 0; i < _numElems; ++i) {
+  for (int i = 0; i <_numElems; ++i) {
     pStagingBufferData[i] = m_srcData[i];
   }
 
@@ -365,7 +364,7 @@ void DX12Interop<NDims, DType, NChannels>::populateDX12Texture() {
   stagingBuffer->Unmap(0, &emptyRange);
 
   // Reset command list to inital state if necessary.
-  std::ignore = m_device.resetCmdList();
+  std::ignore =_device.resetCmdList();
 
   // Set the copy source and destination footprint/locations.
   D3D12_PLACED_SUBRESOURCE_FOOTPRINT bufferFootprint = {};
@@ -373,7 +372,7 @@ void DX12Interop<NDims, DType, NChannels>::populateDX12Texture() {
   bufferFootprint.Footprint.Height = _imgDims.hght;
   bufferFootprint.Footprint.Depth = _imgDims.dpth;
   bufferFootprint.Footprint.RowPitch = _imgDims.wdth * sizeof(DType) * NChannels;
-  bufferFootprint.Footprint.Format = toDXGIFormat<NChannels>(m_elemType);
+  bufferFootprint.Footprint.Format = toDXGIFormat<NChannels>(_elemType);
 
   D3D12_TEXTURE_COPY_LOCATION copyDst = {};
   copyDst.pResource = _texture.Get();
@@ -386,7 +385,7 @@ void DX12Interop<NDims, DType, NChannels>::populateDX12Texture() {
   copySrc.PlacedFootprint = bufferFootprint;
 
   // Copy the upload buffer data to our texture.
-  auto *cmdList = m_device.getCmdList();
+  auto *cmdList =_device.getCmdList();
   cmdList->CopyTextureRegion(&copyDst, 0, 0, 0, &copySrc, nullptr);
 
   D3D12_RESOURCE_BARRIER transitionResourceBarrier = {};
@@ -405,7 +404,7 @@ void DX12Interop<NDims, DType, NChannels>::populateDX12Texture() {
   // Execute the command list.
   ThrowIfFailed(cmdList->Close());
   ID3D12CommandList *ppCommandLists[] = {cmdList};
-  auto *cmdQueue = m_device.getCmdQueue();
+  auto *cmdQueue =_device.getCmdQueue();
   cmdQueue->ExecuteCommandLists(_countof(ppCommandLists),
                                         ppCommandLists);
   ThrowIfFailed(cmdQueue->Signal(_fence.Get(), _fenceVal));
@@ -424,13 +423,13 @@ bool DX12Interop<NDims, DType, NChannels>::validateOutput() {
   using VecType = sycl::vec<DType, NChannels>;
 
   // Reset the command list.
-  ThrowIfFailed(m_device.resetCmdList());
+  ThrowIfFailed(_device.resetCmdList());
 
   // Get intermediate readback buffer size.
   uint64_t bufSize = 0;
-  auto *dev = m_device.getDevice();
+  auto *dev =_device.getDevice();
   dev->GetCopyableFootprints(&_texture->GetDesc(), 0, 1, 0, nullptr,
-                                    nullptr, nullptr, &bufSize);
+                             nullptr, nullptr, &bufSize);
 
   // Define readback heap properties.
   D3D12_HEAP_PROPERTIES heapProps = {};
@@ -467,7 +466,7 @@ bool DX12Interop<NDims, DType, NChannels>::validateOutput() {
   bufferFootprint.Footprint.Height   =_imgDims.hght;
   bufferFootprint.Footprint.Depth    =_imgDims.dpth;
   bufferFootprint.Footprint.RowPitch =_imgDims.wdth * sizeof(DType) * NChannels;
-  bufferFootprint.Footprint.Format   = toDXGIFormat<NChannels>(m_elemType);
+  bufferFootprint.Footprint.Format   = toDXGIFormat<NChannels>(_elemType);
 
   D3D12_TEXTURE_COPY_LOCATION copyDst = {};
   copyDst.pResource = readbackBuffer.Get();
@@ -480,13 +479,13 @@ bool DX12Interop<NDims, DType, NChannels>::validateOutput() {
   copySrc.SubresourceIndex = 0;
 
   // Copy the texture to our readback buffer.
-  auto *cmdList = m_device.getCmdList();
+  auto *cmdList =_device.getCmdList();
   cmdList->CopyTextureRegion(&copyDst, 0, 0, 0, &copySrc, nullptr);
 
   // Execute the command list.
   ThrowIfFailed(cmdList->Close());
   ID3D12CommandList *ppCommandLists[] = {cmdList};
-  auto *cmdQueue = m_device.getCmdQueue();
+  auto *cmdQueue =_device.getCmdQueue();
   cmdQueue->ExecuteCommandLists(_countof(ppCommandLists),
                                         ppCommandLists);
   ThrowIfFailed(cmdQueue->Signal(_fence.Get(), _fenceVal));
@@ -525,7 +524,7 @@ bool DX12Interop<NDims, DType, NChannels>::validateOutput() {
   };
 #endif // ifdef VERBOSE_PRINT
   bool pass = true;
-  for (uint64_t i = 0; i < _numElems; ++i) {
+  for (uint64_t i = 0; i <_numElems; ++i) {
     bool mismatch = false;
     auto expect = m_srcData[i] * 2;
     auto actual = pReadbackBufferData[i];
@@ -540,7 +539,7 @@ bool DX12Interop<NDims, DType, NChannels>::validateOutput() {
       if (!prevMismatch) printMismatch(i, expect, actual);
       // std::cout << "Result mismatch at " << i << "! Expected: " << expect
       //           << ", Actual: " << actual << std::endl;
-      else if (i == _numElems - 1) {
+      else if (i ==_numElems - 1) {
         std::cerr << "... All results in between also mismatched.\n";
         printMismatch(i, expect, actual);
       }
