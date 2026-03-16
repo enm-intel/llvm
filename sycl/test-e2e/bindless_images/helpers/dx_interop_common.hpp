@@ -56,52 +56,29 @@ void CloseNTHandle(HANDLE handle) {
   }
 }
 
-DXGI_FORMAT toDXGIFormat(int NChannels, sycl::image_channel_type channelType) {
+template <uint32_t NChannels>
+DXGI_FORMAT toDXGIFormat(sycl::image_channel_type channelType) {
   switch (channelType) {
   case sycl::image_channel_type::snorm_int8:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R8_SNORM;
-    case 2:
-      return DXGI_FORMAT_R8G8_SNORM;
-    case 4:
-      return DXGI_FORMAT_R8G8B8A8_SNORM;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R8_SNORM;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R8G8_SNORM;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R8G8B8A8_SNORM;
+    break;
   case sycl::image_channel_type::snorm_int16:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R16_SNORM;
-    case 2:
-      return DXGI_FORMAT_R16G16_SNORM;
-    case 4:
-      return DXGI_FORMAT_R16G16B16A16_SNORM;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R16_SNORM;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R16G16_SNORM;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R16G16B16A16_SNORM;
+    break;
   case sycl::image_channel_type::unorm_int8:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R8_UNORM;
-    case 2:
-      return DXGI_FORMAT_R8G8_UNORM;
-    case 4:
-      return DXGI_FORMAT_R8G8B8A8_UNORM;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R8_UNORM;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R8G8_UNORM;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R8G8B8A8_UNORM;
+    break;
   case sycl::image_channel_type::unorm_int16:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R16_UNORM;
-    case 2:
-      return DXGI_FORMAT_R16G16_UNORM;
-    case 4:
-      return DXGI_FORMAT_R16G16B16A16_UNORM;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R16_UNORM;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R16G16_UNORM;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R16G16B16A16_UNORM;
+    break;
   case sycl::image_channel_type::unorm_short_565:
     return DXGI_FORMAT_B5G6R5_UNORM;
   case sycl::image_channel_type::unorm_short_555:
@@ -109,93 +86,45 @@ DXGI_FORMAT toDXGIFormat(int NChannels, sycl::image_channel_type channelType) {
   case sycl::image_channel_type::unorm_int_101010:
     return DXGI_FORMAT_R10G10B10A2_UNORM;
   case sycl::image_channel_type::signed_int8:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R8_SINT;
-    case 2:
-      return DXGI_FORMAT_R8G8_SINT;
-    case 4:
-      return DXGI_FORMAT_R8G8B8A8_SINT;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R8_SINT;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R8G8_SINT;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R8G8B8A8_SINT;
+    break;
   case sycl::image_channel_type::signed_int16:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R16_SINT;
-    case 2:
-      return DXGI_FORMAT_R16G16_SINT;
-    case 4:
-      return DXGI_FORMAT_R16G16B16A16_SINT;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R16_SINT;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R16G16_SINT;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R16G16B16A16_SINT;
+    break;
   case sycl::image_channel_type::signed_int32:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R32_SINT;
-    case 2:
-      return DXGI_FORMAT_R32G32_SINT;
-    case 4:
-      return DXGI_FORMAT_R32G32B32A32_SINT;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R32_SINT;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R32G32_SINT;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R32G32B32A32_SINT;
+    break;
   case sycl::image_channel_type::unsigned_int8:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R8_UINT;
-    case 2:
-      return DXGI_FORMAT_R8G8_UINT;
-    case 4:
-      return DXGI_FORMAT_R8G8B8A8_UINT;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R8_UINT;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R8G8_UINT;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R8G8B8A8_UINT;
+    break;
   case sycl::image_channel_type::unsigned_int16:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R16_UINT;
-    case 2:
-      return DXGI_FORMAT_R16G16_UINT;
-    case 4:
-      return DXGI_FORMAT_R16G16B16A16_UINT;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R16_UINT;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R16G16_UINT;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R16G16B16A16_UINT;
+    break;
   case sycl::image_channel_type::unsigned_int32:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R32_UINT;
-    case 2:
-      return DXGI_FORMAT_R32G32_UINT;
-    case 4:
-      return DXGI_FORMAT_R32G32B32A32_UINT;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R32_UINT;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R32G32_UINT;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R32G32B32A32_UINT;
+    break;
   case sycl::image_channel_type::fp16:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R16_FLOAT;
-    case 2:
-      return DXGI_FORMAT_R16G16_FLOAT;
-    case 4:
-      return DXGI_FORMAT_R16G16B16A16_FLOAT;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R16_FLOAT;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R16G16_FLOAT;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R16G16B16A16_FLOAT;
+    break;
   case sycl::image_channel_type::fp32:
-    switch (NChannels) {
-    case 1:
-      return DXGI_FORMAT_R32_FLOAT;
-    case 2:
-      return DXGI_FORMAT_R32G32_FLOAT;
-    case 4:
-      return DXGI_FORMAT_R32G32B32A32_FLOAT;
-    default:
-      break;
-    }
+    if constexpr (NChannels == 1) return DXGI_FORMAT_R32_FLOAT;
+    if constexpr (NChannels == 2) return DXGI_FORMAT_R32G32_FLOAT;
+    if constexpr (NChannels == 4) return DXGI_FORMAT_R32G32B32A32_FLOAT;
+    break;
   default:
     break;
   }
@@ -276,8 +205,8 @@ std::string getD3DDeviceName(const DXGI_ADAPTER_DESC1 &adapterDesc) {
 /// the one that specifically matches the SYCL device for interopability. For
 /// that reason we will need to introduce an LUID device query extension first.
 template <dx_version dxVer>
-ComPtr<IDXGIAdapter1> getDXGIHardwareAdapter(IDXGIFactory1 *pFactory,
-                                             std::string_view syclDeviceName) {
+ComPtr<IDXGIAdapter1> getDXAdapter(IDXGIFactory1 *pFactory,
+                                   std::string_view syclDeviceName) {
   assert(pFactory);
   ComPtr<IDXGIAdapter1> adapter;
 
@@ -312,7 +241,7 @@ ComPtr<IDXGIAdapter1> getDXGIHardwareAdapter(IDXGIFactory1 *pFactory,
 
       adapterName = getD3DDeviceName(desc);
 #ifdef VERBOSE_PRINT
-      std::cout << "Considering D3D device: " << name << std::endl;
+      std::cout << "Considering D3D device: " << adapterName << std::endl;
 #endif
       // Try matching SYCL device name with D3D device name
       // TODO: This should be replaced by LUID matching

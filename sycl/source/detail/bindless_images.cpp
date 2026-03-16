@@ -672,6 +672,9 @@ __SYCL_EXPORT external_semaphore import_external_semaphore(
   case external_semaphore_handle_type::win32_nt_dx12_fence:
     urHandleType = UR_EXP_EXTERNAL_SEMAPHORE_TYPE_WIN32_NT_DX12_FENCE;
     break;
+  case external_semaphore_handle_type::win32_nt_dx11_fence:
+    urHandleType = UR_EXP_EXTERNAL_SEMAPHORE_TYPE_WIN32_NT_DX11_FENCE;
+    break;
   case external_semaphore_handle_type::timeline_win32_nt_handle:
     urHandleType = UR_EXP_EXTERNAL_SEMAPHORE_TYPE_TIMELINE_WIN32_NT;
     break;
@@ -851,12 +854,16 @@ __SYCL_EXPORT std::vector<image_memory_handle_type>
 get_image_memory_support(const image_descriptor &imageDescriptor,
                          const sycl::device &syclDevice,
                          const sycl::context &syclContext) {
+
+  std::cerr << "[SYCL] ENTER: get_image_memory_support(const image_descriptor &, ...)\n";
   auto [urDevice, urCtx, Adapter] = get_ur_handles(syclDevice, syclContext);
 
+  // std::cerr << "[SYCL]   Get image memory support (1)\n";
   ur_image_desc_t urDesc;
   ur_image_format_t urFormat;
   populate_ur_structs(imageDescriptor, urDesc, urFormat);
 
+  // std::cerr << "[SYCL]   Get image memory support (2)\n";
   ur_bool_t supportsPointerAllocation{0};
   Adapter->call<sycl::errc::runtime,
                 sycl::detail::UrApiKind::
@@ -865,6 +872,7 @@ get_image_memory_support(const image_descriptor &imageDescriptor,
       ur_exp_image_mem_type_t::UR_EXP_IMAGE_MEM_TYPE_USM_POINTER,
       &supportsPointerAllocation);
 
+  // std::cerr << "[SYCL]   Get image memory support (3)\n";
   ur_bool_t supportsOpaqueAllocation{0};
   Adapter->call<sycl::errc::runtime,
                 sycl::detail::UrApiKind::
@@ -873,16 +881,20 @@ get_image_memory_support(const image_descriptor &imageDescriptor,
       ur_exp_image_mem_type_t::UR_EXP_IMAGE_MEM_TYPE_OPAQUE_HANDLE,
       &supportsOpaqueAllocation);
 
+  // std::cerr << "[SYCL]   Get image memory support (4)\n";
   std::vector<image_memory_handle_type> supportedMemHandleTypes;
 
   if (supportsPointerAllocation) {
+    std::cout << "[SYCL]  get_image_memory_support --> Device supports USM pointer allocation for images.\n";
     supportedMemHandleTypes.push_back(image_memory_handle_type::usm_pointer);
   }
 
   if (supportsOpaqueAllocation) {
+    std::cout << "[SYCL]  get_image_memory_support --> Device supports opaque handle allocation for images.\n";
     supportedMemHandleTypes.push_back(image_memory_handle_type::opaque_handle);
   }
 
+  std::cerr << "[SYCL] LEAVE: get_image_memory_support(const image_descriptor &, ...) --> " << supportedMemHandleTypes.size() << "\n";
   return supportedMemHandleTypes;
 }
 
