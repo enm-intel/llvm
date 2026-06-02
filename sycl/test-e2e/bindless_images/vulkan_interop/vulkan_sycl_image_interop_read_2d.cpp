@@ -136,65 +136,76 @@
 #include <sycl/ext/oneapi/bindless_images_interop.hpp>
 #include <sycl/image.hpp>
 
-// ---------------------------------------------------------
+// clang-format off
+using sycl_img_data_t = sycl::image_channel_type;
+
+// Some commonly used channel types
+constexpr sycl_img_data_t sycl_unorm8 = sycl_img_data_t::unorm_int8;
+constexpr sycl_img_data_t sycl_sint8  = sycl_img_data_t::signed_int8;
+constexpr sycl_img_data_t sycl_uint8  = sycl_img_data_t::unsigned_int8;
+constexpr sycl_img_data_t sycl_half   = sycl_img_data_t::fp16;
+constexpr sycl_img_data_t sycl_sint16 = sycl_img_data_t::signed_int16;
+constexpr sycl_img_data_t sycl_uint16 = sycl_img_data_t::unsigned_int16;
+constexpr sycl_img_data_t sycl_sint32 = sycl_img_data_t::signed_int32;
+constexpr sycl_img_data_t sycl_uint32 = sycl_img_data_t::unsigned_int32;
+constexpr sycl_img_data_t sycl_float  = sycl_img_data_t::fp32;
+
+// Commonly used channel orders
+constexpr sycl::image_channel_order sycl_r    = sycl::image_channel_order::r;
+constexpr sycl::image_channel_order sycl_rg   = sycl::image_channel_order::rg;
+constexpr sycl::image_channel_order sycl_rgb  = sycl::image_channel_order::rgb;
+constexpr sycl::image_channel_order sycl_rgba = sycl::image_channel_order::rgba;
+
+template <typename T> 
+inline constexpr uint32_t to_u32(T val) { return static_cast<uint32_t>(val); }
+// clang-format on
+
+// #define VERBOSE_PRINT
+#define DEBUG_IMG_COPY 0
+#ifdef VERBOSE_PRINT
+#define VERBOSE_DEBUG DEBUG_IMG_COPY
+#else
+#define VERBOSE_DEBUG 0
+#endif
+
+constexpr bool LineSep = true;
+
+constexpr uint32_t DefltPrec = 2;    // Default print precision of floats.
+constexpr uint32_t DefltCols = 480;  // Default print columns (in console).
+constexpr uint32_t DefltRows = 256;  // Default print rows.
+
+template<typename T>
+constexpr uint32_t Precision = std::is_floating_point_v<T> ? DefltPrec : 0;
+
+//----------------------------------------------------------------------------//
 // SYCL TYPE MAPPING HELPERS
 // ---------------------------------------------------------
-
-template <typename T> sycl::image_channel_type getSyclChannelType();
-
-template <> inline sycl::image_channel_type getSyclChannelType<float>() {
-  return sycl::image_channel_type::fp32;
-}
-
-template <> inline sycl::image_channel_type getSyclChannelType<sycl::half>() {
-  return sycl::image_channel_type::fp16;
-}
-
-template <> inline sycl::image_channel_type getSyclChannelType<int32_t>() {
-  return sycl::image_channel_type::signed_int32;
-}
-
-template <> inline sycl::image_channel_type getSyclChannelType<uint32_t>() {
-  return sycl::image_channel_type::unsigned_int32;
-}
-
-template <> inline sycl::image_channel_type getSyclChannelType<int16_t>() {
-  return sycl::image_channel_type::signed_int16;
-}
-
-template <> inline sycl::image_channel_type getSyclChannelType<uint16_t>() {
-  return sycl::image_channel_type::unsigned_int16;
-}
-
-template <> inline sycl::image_channel_type getSyclChannelType<uint8_t>() {
-  return sycl::image_channel_type::unsigned_int8;
-}
-
-template <> inline sycl::image_channel_type getSyclChannelType<int8_t>() {
-  return sycl::image_channel_type::signed_int8;
-}
-
-// ---------------------------------------------------------
+// clang-format off
+template <typename T> sycl_img_data_t getSyclChannelType();
+template <> inline sycl_img_data_t getSyclChannelType<float     >() { return sycl_float;  }
+template <> inline sycl_img_data_t getSyclChannelType<sycl::half>() { return sycl_half;   }
+template <> inline sycl_img_data_t getSyclChannelType<int32_t   >() { return sycl_sint32; }
+template <> inline sycl_img_data_t getSyclChannelType<uint32_t  >() { return sycl_uint32; }
+template <> inline sycl_img_data_t getSyclChannelType<int16_t   >() { return sycl_sint16; }
+template <> inline sycl_img_data_t getSyclChannelType<uint16_t  >() { return sycl_uint16; }
+template <> inline sycl_img_data_t getSyclChannelType<uint8_t   >() { return sycl_uint8;  }
+template <> inline sycl_img_data_t getSyclChannelType<int8_t    >() { return sycl_sint8;  }
+// clang-format on
+//----------------------------------------------------------------------------//
 // SYCL CHANNEL ORDER (for unsampled)
 // ---------------------------------------------------------
-
 inline sycl::image_channel_order getSyclChannelOrder(int channels) {
   switch (channels) {
-  case 1:
-    return sycl::image_channel_order::r;
-  case 2:
-    return sycl::image_channel_order::rg;
-  case 4:
-    return sycl::image_channel_order::rgba;
+  case 1: return sycl_r;
+  case 2: return sycl_rg;
+  case 4: return sycl_rgba;
   default:
     throw std::runtime_error("Unsupported channel count for SYCL Order");
   }
 }
-
-// ---------------------------------------------------------
+//----------------------------------------------------------------------------//
 // VULKAN FORMAT MAPPING
 // ---------------------------------------------------------
-
 template <> inline VkFormat getVulkanFormat<sycl::half>(int channels) {
   switch (channels) {
   case 1:
@@ -207,16 +218,325 @@ template <> inline VkFormat getVulkanFormat<sycl::half>(int channels) {
     throw std::runtime_error("Unsupported channels for half");
   }
 }
+//----------------------------------------------------------------------------//
+void wait() {
+  std::cin.clear(); // Clear any potential previous input left in the buffer.
+  // std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
-// ---------------------------------------------------------
+  std::cout << "\n\nPress Enter to continue . . .\n";   
+  std::cin.get(); 
+}
+//----------------------------------------------------------------------------//
+void printString(std::string str) {
+#ifdef VERBOSE_PRINT
+  std::cout << str << "\n";
+#endif
+}
+//----------------------------------------------------------------------------//
+template<typename InT, uint32_t NChannels = 1, typename AsT = InT>
+void printBuf(const InT *data, const uint32_t len,
+              const uint32_t prec = Precision<AsT>,
+              const uint32_t cols = DefltCols,
+              const uint32_t rows = DefltRows) {
+  std::cerr << "[SYCL_DX11_INTEROP] ENTER: printBuf(const InT *, uint32_t, ...)\n";
+  const size_t numVals = len * NChannels;
+
+  constexpr uint32_t Last = NChannels - 1;
+  constexpr uint32_t Half = Last / 2;
+  constexpr AsT      Zero = static_cast<AsT>(0);
+  constexpr bool     Sep  = LineSep && (NChannels > 1);
+
+  std::cout << "\n========================================\n";
+  std::cout << "Buffer size: " << len << "\n";
+  std::cout << "# channels : " << NChannels << "\n";
+  std::cout << "Data ptr   : " << data << "\n";
+
+  AsT minVal = static_cast<AsT>(data[0]);
+  AsT maxVal = minVal;
+  for (uint32_t x = 0; x < numVals; ++x) {
+    AsT val = static_cast<AsT>(data[x]);
+    if      (val > maxVal) maxVal = val;
+    else if (val < minVal) minVal = val;
+  }
+  std::cout << "Extrema   : " << minVal << " .. " << maxVal << "\n";
+
+  if (maxVal < Zero) maxVal = -maxVal;
+  AsT maxMag = (minVal < Zero ? -minVal : minVal);
+  if (maxVal > maxMag) maxMag = maxVal;
+
+  if (std::is_integral_v<AsT> && maxMag < len)
+    maxMag = static_cast<AsT>(len); // Ensure that column indices fit.
+
+  uint32_t digits = 1;
+  maxVal = static_cast<AsT>(10);
+  for (AsT val = maxMag; val >= AsT(10) && digits < 10; ++digits) {
+    // std::cout << "   Val: " << val << "  Digits: " << digits << "\n";
+    val    /= static_cast<AsT>(10);
+    maxVal *= static_cast<AsT>(10);
+  }
+  uint32_t elemW = digits + prec;        // +1 for pad between elements.
+  elemW += (prec > 0) + (minVal < Zero); // Decimal point & negative.
+  // std::cout << "Max. print: " << maxVal << "\n";
+  // std::cout << "# digits  : " << digits << "\n";
+  // std::cout << "Col. width: " << elemW << "\n";
+
+  const uint32_t maxW  = cols / (elemW + 1); // +1 for space between columns.
+  const uint32_t maxH  = rows / (NChannels + Sep);
+  const uint32_t halfW = maxW / 2;
+  const uint32_t halfH = maxH / 2;
+  const bool allX = (len <= maxW);
+
+  std::cout << ' ';
+  for (uint32_t x = 0, x_e = len; x_e--; ++x) {
+    if (allX || x < halfW || x_e < halfW)
+      std::cout << std::format("{:^{}d}", x, elemW + 1);
+    else if (x == halfW) std::cout << "...  ";
+  }
+  std::cout << '\n';
+  for (uint32_t x = 0, x_e = len; x_e--; ++x) {
+    if (allX || x < halfW || x_e < halfW) {
+      const char sep = (Sep || x == 0) ? '+' : '-';
+      std::cout << std::format("{}{:->{}s}", sep, "-", elemW);
+    }
+    else if (x == halfW) std::cout << " ... ";
+  }
+  std::cout << "+\n";
+  for (uint32_t c = 0; c < NChannels; ++c) {
+    for (uint32_t x = 0, x_e = len, i = 0; x_e--; ++x, i += NChannels) {
+      if (allX || x < halfW || x_e < halfW) {
+        AsT val = static_cast<AsT>(data[i]);
+        if (Sep || !Last || c != Last) {
+          const char sep = (Sep || x == 0) ? '|' : ' ';
+          if constexpr (std::is_floating_point_v<AsT>) {
+            if (std::abs(val) >= maxVal)
+              std::cout << std::format("{}{:{}e}", sep, val, elemW);
+            else
+              std::cout << std::format("{}{:{}.{}f}", sep, val, elemW, prec);
+          }
+          else if constexpr (std::is_integral_v<AsT>)
+            std::cout << std::format("{}{:{}d}", sep, val, elemW);
+        }
+        else {
+          if constexpr (std::is_floating_point_v<AsT>)
+            if (std::abs(val) >= maxVal)
+              std::cout << std::format("_{:_>{}e}", val, elemW);
+            else
+              std::cout << std::format("_{:_>{}.{}f}", val, elemW, prec);
+          else if constexpr (std::is_integral_v<AsT>)
+            std::cout << std::format("_{:_>{}d}", val, elemW);
+        }
+      }
+      else if (x == halfW) std::cout << " ... ";
+    }
+    data++;
+    std::cout << "|\n";
+  }
+
+  for (uint32_t x = 0, x_e = len; x_e--; ++x) {
+    if (allX || x < halfW || x_e < halfW) {
+      const char sep = (Sep || x == 0) ? '+' : '-';
+      std::cout << std::format("{}{:->{}s}", sep, "-", elemW);
+    }
+    else if (x == halfW) std::cout << " ... ";
+  }
+  std::cout << "+\n\n";
+  std::cerr << "[SYCL_DX11_INTEROP] LEAVE: printBuf(const InT *, uint32_t, ...)\n";
+}
+//----------------------------------------------------------------------------//
+template<typename InT, uint32_t NChannels = 1, typename AsT = InT>
+void printImg(const InT *data, const uint32_t wdth, const uint32_t hght,
+              const uint32_t dpth = 1,
+              const uint32_t prec = Precision<AsT>,
+              const uint32_t cols = DefltCols,
+              const uint32_t rows = DefltRows) {
+  std::cerr << "[SYCL_DX11_INTEROP] ENTER: printImg(const InT *, uint32_t, uint32_t, ...)\n";
+  const size_t rowVals = wdth * NChannels;
+
+  constexpr uint32_t Last = NChannels - 1;
+  constexpr uint32_t Half = Last / 2;
+  constexpr AsT      Zero = static_cast<AsT>(0);
+  constexpr bool     Sep  = LineSep && (NChannels > 1);
+
+  std::cout << "\n========================================\n";
+  if (dpth > 1) std::cout << "Image size: " << wdth << "(w) x " << hght << "(h) x " << dpth << "(d)\n";
+  else          std::cout << "Image size: " << wdth << "(w) x " << hght << "(h)\n";
+  std::cout << "# channels: " << NChannels << "\n";
+  std::cout << "Data ptr  : " << data << "\n";
+
+  AsT minVal = static_cast<AsT>(data[0]);
+  AsT maxVal = minVal;
+  for (uint32_t d = 0; d < dpth; ++d) {
+    for (uint32_t y = 0; y < hght; ++y) {
+        const InT *row = data + y * rowVals;
+        for (uint32_t x = 0; x < rowVals; ++x) {
+            AsT val = static_cast<AsT>(row[x]);
+            if      (val > maxVal) maxVal = val;
+            else if (val < minVal) minVal = val;
+        }
+    }
+  }
+  std::cout << "Extrema   : " << minVal << " .. " << maxVal << "\n";
+
+  if (maxVal < Zero) maxVal = -maxVal;
+  AsT maxMag = (minVal < Zero ? -minVal : minVal);
+  if (maxVal > maxMag) maxMag = maxVal;
+
+  if (std::is_integral_v<AsT> && maxMag < wdth)
+      maxMag = static_cast<AsT>(wdth); // Ensure that column indices fit.
+
+  uint32_t digits = 1;
+  maxVal = static_cast<AsT>(10);
+  for (AsT val = maxMag; val >= AsT(10) && digits < 10; ++digits) {
+      // std::cout << "   Val: " << val << "  Digits: " << digits << "\n";
+      val    /= static_cast<AsT>(10);
+      maxVal *= static_cast<AsT>(10);
+  }
+  uint32_t elemW = digits + prec;        // +1 for pad between elements.
+  elemW += (prec > 0) + (minVal < Zero); // Decimal point & negative.
+  // std::cout << "Max. print: " << maxVal << "\n";
+  // std::cout << "# digits  : " << digits << "\n";
+  // std::cout << "Col. width: " << elemW << "\n";
+
+  const uint32_t maxW  = cols / (elemW + 1); // +1 for space between columns.
+  const uint32_t maxH  = rows / (NChannels + Sep);
+  const uint32_t halfW = maxW / 2;
+  const uint32_t halfH = maxH / 2;
+  const bool allX = (wdth <= maxW);
+  const bool allY = (hght <= maxH);
+
+  for (uint32_t d = 0; d < dpth; ++d) {
+    const InT *img = data + d * rowVals * hght;
+    if (dpth > 1) {
+      std::cout << "----------------------------------------\n";
+      std::cout << "Image: " << d << "\n";
+    }
+    std::cout << "     ";
+    for (uint32_t x = 0, x_e = wdth; x_e--; ++x) {
+        if (allX || x < halfW || x_e < halfW)
+            std::cout << std::format("{:^{}d}", x, elemW + 1);
+        else if (x == halfW) std::cout << "...  ";
+    }
+    std::cout << "\n    ";
+    for (uint32_t x = 0, x_e = wdth; x_e--; ++x) {
+        if (allX || x < halfW || x_e < halfW) {
+            const char sep = (Sep || x == 0) ? '+' : '-';
+            std::cout << std::format("{}{:->{}s}", sep, "-", elemW);
+        }
+        else if (x == halfW) std::cout << " ... ";
+    }
+    std::cout << "+\n";
+    for (uint32_t y = 0, y_e = hght; y_e--; ++y) {
+      if (allY || y < halfH || y_e < halfH) {
+        const InT *row = img + y * rowVals;
+        for (uint32_t c = 0; c < NChannels; ++c) {
+          if (c == Half) std::cout << std::format("{:4}", y);
+          else           std::cout << "    ";
+          for (uint32_t x = 0, x_e = wdth, i = 0; x_e--; ++x, i += NChannels) {
+            if (allX || x < halfW || x_e < halfW) {
+              AsT val = static_cast<AsT>(row[i]);
+              if (Sep || !Last || c != Last) {
+                const char sep = (Sep || x == 0) ? '|' : ' ';
+                if constexpr (std::is_floating_point_v<AsT>) {
+                  if (std::abs(val) >= maxVal)
+                    std::cout << std::format("{}{:{}e}", sep, val, elemW);
+                  else
+                    std::cout << std::format("{}{:{}.{}f}", sep, val, elemW, prec);
+                }
+                else if constexpr (std::is_integral_v<AsT>)
+                  std::cout << std::format("{}{:{}d}", sep, val, elemW);
+              }
+              else {
+                if constexpr (std::is_floating_point_v<AsT>)
+                  if (std::abs(val) >= maxVal)
+                    std::cout << std::format("_{:_>{}e}", val, elemW);
+                  else
+                    std::cout << std::format("_{:_>{}.{}f}", val, elemW, prec);
+                else if constexpr (std::is_integral_v<AsT>)
+                  std::cout << std::format("_{:_>{}d}", val, elemW);
+              }
+            }
+            else if (x == halfW) std::cout << " ... ";
+          }
+          row++;
+          std::cout << "|\n";
+        }
+        if (Sep && y_e) {
+          std::cout << "    ";
+          for (uint32_t x = 0, x_e = wdth; x_e--; ++x) {
+            if (allX || x < halfW || x_e < halfW)
+              std::cout << std::format("+{:->{}s}", "-", elemW);
+            else if (x == halfW) std::cout << " ... ";
+          }
+          std::cout << "+\n";
+        }
+      }
+      else if (y == halfH) std::cout << "\n    .\n    .\n    .\n";
+    }
+    std::cout << "    ";
+    for (uint32_t x = 0, x_e = wdth; x_e--; ++x) {
+      if (allX || x < halfW || x_e < halfW) {
+        const char sep = (Sep || x == 0) ? '+' : '-';
+        std::cout << std::format("{}{:->{}s}", sep, "-", elemW);
+      }
+      else if (x == halfW) std::cout << " ... ";
+    }
+    std::cout << "+\n\n";
+  }
+  if (dpth > 1) std::cout << "----------------------------------------\n";
+  std::cerr << "[SYCL_DX11_INTEROP] LEAVE: printImg(const InT *, uint32_t, uint32_t, ...)\n";
+}
+//----------------------------------------------------------------------------//
+template<uint32_t NChannels = 1>
+inline void printImgU08(const uint8_t *data,
+                        const uint32_t wdth, const uint32_t hght,
+                        const uint32_t cols = DefltCols,
+                        const uint32_t rows = DefltRows) {
+  printImg<uint8_t, NChannels>(data, wdth, hght, 0, cols, rows);
+}
+//----------------------------------------------------------------------------//
+template<uint32_t NChannels = 1>
+inline void printImgU32(const uint32_t *data,
+                        const uint32_t wdth, const uint32_t hght,
+                        const uint32_t cols = DefltCols,
+                        const uint32_t rows = DefltRows) {
+  printImg<uint32_t, NChannels>(data, wdth, hght, 0, cols, rows);
+}
+//----------------------------------------------------------------------------//
+template<uint32_t NChannels = 1>
+inline void printImgS32(const  int32_t *data,
+                        const uint32_t wdth, const uint32_t hght,
+                        const uint32_t cols = DefltCols,
+                        const uint32_t rows = DefltRows) {
+  printImg<int32_t, NChannels>(data, wdth, hght, 0, cols, rows);
+}
+//----------------------------------------------------------------------------//
+template<uint32_t NChannels = 1, typename AsT = float>
+inline void printImgFlt(const float *data,
+                        const uint32_t wdth, const uint32_t hght,
+                        const uint32_t prec = DefltPrec,
+                        const uint32_t cols = DefltCols,
+                        const uint32_t rows = DefltRows) {
+  printImg<float, NChannels, AsT>(data, wdth, hght, prec, cols, rows);
+}
+//----------------------------------------------------------------------------//
+template<uint32_t NChannels = 1>
+inline void printImgFltAsU32(const float *data,
+                             const uint32_t wdth, const uint32_t hght,
+                             const uint32_t prec = DefltPrec,
+                             const uint32_t cols = DefltCols,
+                             const uint32_t rows = DefltRows) {
+  printImg<float, NChannels, uint32_t>(data, wdth, hght, prec, cols, rows);
+}
+//----------------------------------------------------------------------------//
 // TEMPLATED RUNNER
 // ---------------------------------------------------------
 template <typename T>
 int runTest(
     int width, int height, int channels, bool useLinear, bool useSemaphores,
     bool useSampled, VkFormat fmtOverride = VK_FORMAT_UNDEFINED,
-    std::optional<sycl::image_channel_type> syclOverride = std::nullopt) {
+    std::optional<sycl_img_data_t> syclOverride = std::nullopt) {
 
+  ENTER("runTest", "int, int, int, bool, bool, bool, VkFormat, std::optional<sycl::image_channel_type>");
   VkImageTiling tiling =
       useLinear ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
   VkFormat vkFormat = (fmtOverride != VK_FORMAT_UNDEFINED)
@@ -226,19 +546,25 @@ int runTest(
   std::cout << "VK Format: " << getFormatString(vkFormat) << std::endl;
 
   // Setup Vulkan
+  PUTS("Setting up Vulkan context and resources");
   VulkanContext vkCtx = createVulkanContext();
   VkExtent3D extent = {(uint32_t)width, (uint32_t)height, 1};
   ImageResources imgRes =
       createExportableImage(vkCtx, extent, vkFormat, VK_IMAGE_TYPE_2D, tiling);
 
   // Semaphores
+  PUTS("Creating Vulkan Semaphore for synchronization");
   VkSemaphore vkSem = VK_NULL_HANDLE;
-  if (useSemaphores)
+  if (useSemaphores) {
+    PUTS("Using Vulkan Semaphores for synchronization");
     vkSem = createExportableSemaphore(vkCtx);
+  }
 
   // Upload test data
+  PUTS("Uploading test data to Vulkan image");
   if (!uploadAndVerify<T>(vkCtx, imgRes, vkSem, channels)) {
     std::cerr << "Vulkan Upload Failed!" << std::endl;
+    RETURN(1);
     return 1;
   }
 
@@ -264,6 +590,7 @@ int runTest(
         extMemDesc, q.get_device(), q.get_context());
 
     // Import Semaphore (Platform Specific)
+    PUTS("Importing Vulkan semaphore");
     syclexp::external_semaphore extSem;
     if (useSemaphores) {
 #ifdef _WIN32
@@ -281,7 +608,7 @@ int runTest(
     }
 
     // Create Image Descriptor
-    sycl::image_channel_type syclType = syclOverride.has_value()
+    sycl_img_data_t syclType = syclOverride.has_value()
                                             ? syclOverride.value()
                                             : getSyclChannelType<T>();
 
@@ -291,6 +618,7 @@ int runTest(
                                       syclType);
 
     // Map external memory
+    PUTS("Mapping external image memory");
     syclexp::image_mem_handle devHandle = syclexp::map_external_image_memory(
         extMem, imgDesc, q.get_device(), q.get_context());
 
@@ -299,6 +627,7 @@ int runTest(
     syclexp::unsampled_image_handle unsampledHandle;
 
     if (useSampled) {
+      PUTS("Creating Sampled Image Handle");
       // Sampler: Nearest required for Integer types
       syclexp::bindless_image_sampler sampler(
           sycl::addressing_mode::clamp_to_edge,
@@ -307,6 +636,7 @@ int runTest(
       sampledHandle = syclexp::create_image(devHandle, sampler, imgDesc,
                                             q.get_device(), q.get_context());
     } else {
+      PUTS("Creating Unsampled Image Handle");
       // Unsampled image
       unsampledHandle = syclexp::create_image(devHandle, imgDesc,
                                               q.get_device(), q.get_context());
@@ -319,12 +649,14 @@ int runTest(
     // Wait for Vulkan semaphore if needed
     sycl::event dependencyEvent;
     if (useSemaphores) {
+      PUTS("Waiting for Vulkan semaphore");
       dependencyEvent = q.submit([&](sycl::handler &h) {
         h.ext_oneapi_wait_external_semaphore(extSem);
       });
     }
 
     // Kernel: Read image data
+    PUTS("Submitting SYCL kernel to read image data");
     q.submit([&](sycl::handler &h) {
        if (useSemaphores)
          h.depends_on(dependencyEvent);
@@ -447,9 +779,11 @@ int runTest(
 
     // Cleanup SYCL resources
     if (useSampled) {
+      PUTS("Destroying Sampled Image Handle");
       syclexp::destroy_image_handle(sampledHandle, q.get_device(),
                                     q.get_context());
     } else {
+      PUTS("Destroying Unsampled Image Handle");
       syclexp::destroy_image_handle(unsampledHandle, q.get_device(),
                                     q.get_context());
     }
@@ -457,22 +791,24 @@ int runTest(
     syclexp::release_external_memory(extMem, q.get_device(), q.get_context());
 
     if (useSemaphores) {
+      PUTS("Releasing External Semaphore");
       syclexp::release_external_semaphore(extSem, q.get_device(),
                                           q.get_context());
       vkDestroySemaphore(vkCtx.device, vkSem, nullptr);
     }
 
     cleanupVulkan(vkCtx, imgRes);
+    RETURN(passed ? 0 : 1);
     return passed ? 0 : 1;
 
   } catch (std::exception &e) {
     std::cerr << "SYCL Exception: " << e.what() << std::endl;
     cleanupVulkan(vkCtx, imgRes);
+    RETURN(1);
     return 1;
   }
 }
-
-// ---------------------------------------------------------
+//----------------------------------------------------------------------------//
 // MAIN
 // ---------------------------------------------------------
 int main(int argc, char **argv) {
@@ -549,9 +885,10 @@ int main(int argc, char **argv) {
   if (type == "unorm8") {
     return runTest<uint8_t>(width, height, channels, useLinear, useSemaphores,
                             useSampled, getUnorm8Format(channels),
-                            sycl::image_channel_type::unorm_int8);
+                            sycl_unorm8);
   }
 
   std::cerr << "Unknown type: " << type << std::endl;
   return 1;
 }
+//----------------------------------------------------------------------------//
