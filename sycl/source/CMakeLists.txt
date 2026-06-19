@@ -368,6 +368,12 @@ set(SYCL_COMMON_SOURCES
     "$<$<OR:$<PLATFORM_ID:Linux>,$<PLATFORM_ID:Darwin>>:detail/posix_ur.cpp>"
 )
 
+  # Override default standard only for bindless images implementation.
+  set_source_files_properties(
+    detail/bindless_images.cpp
+    PROPERTIES COMPILE_OPTIONS
+    "$<$<BOOL:${MSVC}>:/std:c++20>;$<$<NOT:$<BOOL:${MSVC}>>:-std=c++20>")
+
 set(SYCL_NON_PREVIEW_SOURCES "${SYCL_COMMON_SOURCES}"
 )
 

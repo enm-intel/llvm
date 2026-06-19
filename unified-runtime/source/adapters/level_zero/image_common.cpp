@@ -22,6 +22,68 @@
 #include "sampler.hpp"
 #include "ur_interface_loader.hpp"
 
+// ******** BEGIN: DEBUG LOGGING MACROS ********
+#define NAMESPACE_TAG "UR-IMG-COMMON"
+
+#ifndef ENABLE_DEBUG_LOG
+#define ENABLE_DEBUG_LOG 1
+#endif // ENABLE_DEBUG_LOG
+
+#ifndef ENABLE_NAMESPACE_TAG
+#define ENABLE_NAMESPACE_TAG 1
+#endif // ENABLE_NAMESPACE_TAG
+
+#ifndef ENABLE_THREAD_TAG
+#define ENABLE_THREAD_TAG 0
+#endif // ENABLE_THREAD_TAG
+
+#if ENABLE_DEBUG_LOG
+
+#include <format>
+#include <iostream>
+
+#if ENABLE_THREAD_TAG
+#include <sstream>
+#include <thread>
+#define __DBG_THREAD_ID__            \
+    std::ostringstream _dbgThreadID; \
+    _dbgThreadID << std::setw(6) << std::this_thread::get_id();
+#endif
+
+#if (ENABLE_NAMESPACE_TAG && defined(NAMESPACE_TAG))
+#if ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[{}.{}] ", NAMESPACE_TAG, _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__ std::string _dbgTag = std::format("[{}] ", NAMESPACE_TAG);
+#endif // ENABLE_THREAD_TAG
+#elif ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[>{}] ", _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__
+#endif // ENABLE_THREAD_TAG
+
+#define ENTER(funcName, params)                                    \
+    __DBG_TAG__                                                    \
+    std::string _dbgSig = std::format("{}({})", funcName, params); \
+    std::cerr << std::format("{}ENTER: {}\n", _dbgTag, _dbgSig)
+#define LEAVE std::cerr << std::format("{}LEAVE: {}\n", _dbgTag, _dbgSig)
+#define RETURN(val) std::cerr << std::format("{}LEAVE: {} --> {}\n", _dbgTag, _dbgSig, val)
+#define PUTS(msg) std::cerr << std::format("{}    -{}: {}\n", _dbgTag, __func__, msg)
+#define PRINT(frmt, ...) std::cerr << std::format("{}    -{}: " frmt, _dbgTag, __func__, __VA_ARGS__)
+
+#else // ENABLE_DEBUG_LOG
+#define ENTER(funcName, params)
+#define LEAVE
+#define RETURN(val)
+#define PUTS(msg)
+#define PRINT(frmt, ...)
+#endif // ENABLE_DEBUG_LOG
+// ******** END: DEBUG LOGGING MACROS ********
+
 namespace {
 
 /// Construct UR image format from ZE image desc.
@@ -1383,11 +1445,13 @@ ur_result_t urBindlessImagesImportExternalSemaphoreExp(
     ur_exp_external_semaphore_type_t semHandleType,
     ur_exp_external_semaphore_desc_t *pExternalSemaphoreDesc,
     ur_exp_external_semaphore_handle_t *phExternalSemaphoreHandle) {
-
+  ENTER("urBindlessImagesImportExternalSemaphoreExp", "ur_context_handle_t, ur_device_handle_t, ur_exp_external_semaphore_type_t, "
+        "ur_exp_external_semaphore_desc_t *, ur_exp_external_semaphore_handle_t *");
   auto UrPlatform = hContext->getPlatform();
   if (UrPlatform->ZeExternalSemaphoreExt.Supported == false) {
     UR_LOG_LEGACY(ERR, logger::LegacyMessage("[UR][L0] "),
                   " {} function not supported!", __FUNCTION__);
+    RETURN("UR_RESULT_ERROR_UNSUPPORTED_FEATURE");
     return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
   }
   ze_external_semaphore_ext_desc_t SemDesc = {
@@ -1401,8 +1465,10 @@ ur_result_t urBindlessImagesImportExternalSemaphoreExp(
       nullptr};
   void *pNext = const_cast<void *>(pExternalSemaphoreDesc->pNext);
   while (pNext != nullptr) {
+    PUTS("Processing pNext in urBindlessImagesImportExternalSemaphoreExp");
     const ur_base_desc_t *BaseDesc = static_cast<const ur_base_desc_t *>(pNext);
     if (BaseDesc->stype == UR_STRUCTURE_TYPE_EXP_FILE_DESCRIPTOR) {
+      PUTS("UR_STRUCTURE_TYPE_EXP_FILE_DESCRIPTOR");
       auto FileDescriptor =
           static_cast<const ur_exp_file_descriptor_t *>(pNext);
       FDExpDesc.fd = FileDescriptor->fd;
@@ -1415,29 +1481,36 @@ ur_result_t urBindlessImagesImportExternalSemaphoreExp(
         SemDesc.flags = ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_VK_TIMELINE_SEMAPHORE_FD;
         break;
       default:
+        RETURN("UR_RESULT_ERROR_INVALID_VALUE");
         return UR_RESULT_ERROR_INVALID_VALUE;
       }
     } else if (BaseDesc->stype == UR_STRUCTURE_TYPE_EXP_WIN32_HANDLE) {
+      PUTS("  * UR_STRUCTURE_TYPE_EXP_WIN32_HANDLE");
       SemDesc.pNext = &Win32ExpDesc;
       auto Win32Handle = static_cast<const ur_exp_win32_handle_t *>(pNext);
       switch (semHandleType) {
       case UR_EXP_EXTERNAL_SEMAPHORE_TYPE_WIN32_NT:
+        PUTS("    - UR_EXP_EXTERNAL_SEMAPHORE_TYPE_WIN32_NT -> ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_OPAQUE_WIN32");
         SemDesc.flags = ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_OPAQUE_WIN32;
         break;
       case UR_EXP_EXTERNAL_SEMAPHORE_TYPE_WIN32_NT_DX12_FENCE:
+        PUTS("    - UR_EXP_EXTERNAL_SEMAPHORE_TYPE_WIN32_NT_DX12_FENCE -> ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_D3D12_FENCE");
         SemDesc.flags = ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_D3D12_FENCE;
         break;
       case UR_EXP_EXTERNAL_SEMAPHORE_TYPE_WIN32_NT_DX11_FENCE:
         SemDesc.flags = ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_D3D11_FENCE;
         break;
       case UR_EXP_EXTERNAL_SEMAPHORE_TYPE_TIMELINE_WIN32_NT:
+        PUTS("    - UR_EXP_EXTERNAL_SEMAPHORE_TYPE_TIMELINE_WIN32_NT -> ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_VK_TIMELINE_SEMAPHORE_WIN32");
         SemDesc.flags =
             ZE_EXTERNAL_SEMAPHORE_EXT_FLAG_VK_TIMELINE_SEMAPHORE_WIN32;
         break;
       default:
+        RETURN("UR_RESULT_ERROR_INVALID_VALUE");
         return UR_RESULT_ERROR_INVALID_VALUE;
       }
       Win32ExpDesc.handle = Win32Handle->handle;
+      PRINT("    - shared NT handle = {}\n", Win32ExpDesc.handle);
     }
     pNext = const_cast<void *>(BaseDesc->pNext);
   }
@@ -1446,7 +1519,7 @@ ur_result_t urBindlessImagesImportExternalSemaphoreExp(
              (hDevice->ZeDevice, &SemDesc, &ExtSemaphoreHandle));
   *phExternalSemaphoreHandle =
       (ur_exp_external_semaphore_handle_t)ExtSemaphoreHandle;
-
+  RETURN("UR_RESULT_SUCCESS");
   return UR_RESULT_SUCCESS;
 }
 

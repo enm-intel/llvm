@@ -120,6 +120,12 @@ if(UR_BUILD_ADAPTER_L0)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../"
         LevelZeroLoader-Headers
     )
+
+    # Override default standard only for image format conversion implementation.
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/image_common.cpp
+        PROPERTIES COMPILE_OPTIONS
+        "$<$<BOOL:${MSVC}>:/std:c++20>;$<$<NOT:$<BOOL:${MSVC}>>:-std=c++20>")
 endif()
 
 if(UR_BUILD_ADAPTER_L0_V2)
@@ -231,4 +237,11 @@ if(UR_BUILD_ADAPTER_L0_V2)
         "${CMAKE_CURRENT_SOURCE_DIR}/../../ur"
         LevelZeroLoader-Headers
     )
+
+    # Override default standard only for files using C++20-only facilities.
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/image_common.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/v2/command_list_manager.cpp
+        PROPERTIES COMPILE_OPTIONS
+        "$<$<BOOL:${MSVC}>:/std:c++20>;$<$<NOT:$<BOOL:${MSVC}>>:-std=c++20>")
 endif()

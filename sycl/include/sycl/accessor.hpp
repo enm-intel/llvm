@@ -33,6 +33,7 @@
 #include <sycl/property_list.hpp>                     // for property_list
 #include <sycl/range.hpp>                             // for range
 
+#include <algorithm>   // for min
 #include <cstddef>     // for size_t
 #include <functional>  // for hash
 #include <iterator>    // for reverse_iterator
@@ -276,6 +277,9 @@ template <> struct IsCxPropertyList<ext::oneapi::accessor_property_list<>> {
 
 // Zero-dimensional accessors references at-most a single element, so the range
 // is either 0 if the associated buffer is empty or 1 otherwise.
+#ifdef min
+#undef min
+#endif
 template <typename BufferT>
 sycl::range<1> GetZeroDimAccessRange(BufferT Buffer) {
   return std::min(Buffer.size(), size_t{1});

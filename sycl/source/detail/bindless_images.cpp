@@ -17,6 +17,68 @@
 
 #include <memory>
 
+// ******** BEGIN: DEBUG LOGGING MACROS ********
+#define NAMESPACE_TAG "SYCL-BINDLESS-IMAGES"
+
+#ifndef ENABLE_DEBUG_LOG
+#define ENABLE_DEBUG_LOG 1
+#endif // ENABLE_DEBUG_LOG
+
+#ifndef ENABLE_NAMESPACE_TAG
+#define ENABLE_NAMESPACE_TAG 1
+#endif // ENABLE_NAMESPACE_TAG
+
+#ifndef ENABLE_THREAD_TAG
+#define ENABLE_THREAD_TAG 0
+#endif // ENABLE_THREAD_TAG
+
+#if ENABLE_DEBUG_LOG
+
+#include <format>
+#include <iostream>
+
+#if ENABLE_THREAD_TAG
+#include <sstream>
+#include <thread>
+#define __DBG_THREAD_ID__            \
+    std::ostringstream _dbgThreadID; \
+    _dbgThreadID << std::setw(6) << std::this_thread::get_id();
+#endif
+
+#if (ENABLE_NAMESPACE_TAG && defined(NAMESPACE_TAG))
+#if ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[{}.{}] ", NAMESPACE_TAG, _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__ std::string _dbgTag = std::format("[{}] ", NAMESPACE_TAG);
+#endif // ENABLE_THREAD_TAG
+#elif ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[>{}] ", _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__
+#endif // ENABLE_THREAD_TAG
+
+#define ENTER(funcName, params)                                    \
+    __DBG_TAG__                                                    \
+    std::string _dbgSig = std::format("{}({})", funcName, params); \
+    std::cerr << std::format("{}ENTER: {}\n", _dbgTag, _dbgSig)
+#define LEAVE std::cerr << std::format("{}LEAVE: {}\n", _dbgTag, _dbgSig)
+#define RETURN(val) std::cerr << std::format("{}LEAVE: {} --> {}\n", _dbgTag, _dbgSig, val)
+#define PUTS(msg) std::cerr << std::format("{}    -{}: {}\n", _dbgTag, __func__, msg)
+#define PRINT(frmt, ...) std::cerr << std::format("{}    -{}: " frmt, _dbgTag, __func__, __VA_ARGS__)
+
+#else // ENABLE_DEBUG_LOG
+#define ENTER(funcName, params)
+#define LEAVE
+#define RETURN(val)
+#define PUTS(msg)
+#define PRINT(frmt, ...)
+#endif // ENABLE_DEBUG_LOG
+// ******** END: DEBUG LOGGING MACROS ********
+
 namespace sycl {
 inline namespace _V1 {
 namespace ext::oneapi::experimental {
@@ -653,6 +715,8 @@ template <>
 __SYCL_EXPORT external_semaphore import_external_semaphore(
     external_semaphore_descriptor<resource_win32_handle> externalSemaphoreDesc,
     const sycl::device &syclDevice, const sycl::context &syclContext) {
+  ENTER("import_external_semaphore", "external_semaphore_descriptor<resource_win32_handle>, const sycl::device &, const sycl::context &");
+  PRINT("  External semaphore: shared handle = {}  type = {}\n", externalSemaphoreDesc.external_resource.handle, static_cast<int>(externalSemaphoreDesc.handle_type));
   auto [urDevice, urCtx, Adapter] = get_ur_handles(syclDevice, syclContext);
 
   ur_exp_external_semaphore_handle_t urExternalSemaphore = nullptr;
@@ -682,12 +746,12 @@ __SYCL_EXPORT external_semaphore import_external_semaphore(
     throw sycl::exception(sycl::make_error_code(sycl::errc::invalid),
                           "Invalid semaphore handle type");
   }
-
+  PRINT("Calling UR API to import external semaphore: shared NT handle = {}  type = {}\n", urWin32Handle.handle, static_cast<int>(urHandleType));
   Adapter->call<
       sycl::errc::invalid,
       sycl::detail::UrApiKind::urBindlessImagesImportExternalSemaphoreExp>(
       urCtx, urDevice, urHandleType, &urExternalSemDesc, &urExternalSemaphore);
-
+  LEAVE;
   return external_semaphore{urExternalSemaphore,
                             externalSemaphoreDesc.handle_type};
 }

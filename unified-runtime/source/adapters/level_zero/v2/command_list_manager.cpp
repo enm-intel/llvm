@@ -19,6 +19,68 @@
 #include "kernel.hpp"
 #include "memory.hpp"
 
+// ******** BEGIN: DEBUG LOGGING MACROS ********
+#define NAMESPACE_TAG "UR-CMD-LIST-MANAGER"
+
+#ifndef ENABLE_DEBUG_LOG
+#define ENABLE_DEBUG_LOG 1
+#endif // ENABLE_DEBUG_LOG
+
+#ifndef ENABLE_NAMESPACE_TAG
+#define ENABLE_NAMESPACE_TAG 1
+#endif // ENABLE_NAMESPACE_TAG
+
+#ifndef ENABLE_THREAD_TAG
+#define ENABLE_THREAD_TAG 0
+#endif // ENABLE_THREAD_TAG
+
+#if ENABLE_DEBUG_LOG
+
+#include <format>
+#include <iostream>
+
+#if ENABLE_THREAD_TAG
+#include <sstream>
+#include <thread>
+#define __DBG_THREAD_ID__            \
+    std::ostringstream _dbgThreadID; \
+    _dbgThreadID << std::setw(6) << std::this_thread::get_id();
+#endif
+
+#if (ENABLE_NAMESPACE_TAG && defined(NAMESPACE_TAG))
+#if ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[{}.{}] ", NAMESPACE_TAG, _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__ std::string _dbgTag = std::format("[{}] ", NAMESPACE_TAG);
+#endif // ENABLE_THREAD_TAG
+#elif ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[>{}] ", _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__
+#endif // ENABLE_THREAD_TAG
+
+#define ENTER(funcName, params)                                    \
+    __DBG_TAG__                                                    \
+    std::string _dbgSig = std::format("{}({})", funcName, params); \
+    std::cerr << std::format("{}ENTER: {}\n", _dbgTag, _dbgSig)
+#define LEAVE std::cerr << std::format("{}LEAVE: {}\n", _dbgTag, _dbgSig)
+#define RETURN(val) std::cerr << std::format("{}LEAVE: {} --> {}\n", _dbgTag, _dbgSig, val)
+#define PUTS(msg) std::cerr << std::format("{}    -{}: {}\n", _dbgTag, __func__, msg)
+#define PRINT(frmt, ...) std::cerr << std::format("{}    -{}: " frmt, _dbgTag, __func__, __VA_ARGS__)
+
+#else // ENABLE_DEBUG_LOG
+#define ENTER(funcName, params)
+#define LEAVE
+#define RETURN(val)
+#define PUTS(msg)
+#define PRINT(frmt, ...)
+#endif // ENABLE_DEBUG_LOG
+// ******** END: DEBUG LOGGING MACROS ********
+
 thread_local std::vector<ze_event_handle_t> waitList;
 // The wait_list_view is a wrapper for eventsWaitLists, which:
 // -  enables passing a ze_event_handle_t buffer created from events as an
@@ -1002,11 +1064,13 @@ ur_result_t ur_command_list_manager::bindlessImagesWaitExternalSemaphoreExp(
     ur_exp_external_semaphore_handle_t hSemaphore, bool hasWaitValue,
     uint64_t waitValue, wait_list_view &waitListView,
     ur_event_handle_t phEvent) {
+  ENTER("ur_command_list_manager::bindlessImagesWaitExternalSemaphoreExp", "ur_exp_external_semaphore_handle_t, bool, uint64_t, wait_list_view &, ur_event_handle_t");
   auto hPlatform = hContext->getPlatform();
   if (hPlatform->ZeExternalSemaphoreExt.Supported == false) {
     UR_LOG_LEGACY(ERR,
                   logger::LegacyMessage("[UR][L0] {} function not supported!"),
                   "{} function not supported!", __FUNCTION__);
+    RETURN("UR_RESULT_ERROR_UNSUPPORTED_FEATURE");
     return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
   }
 
@@ -1023,7 +1087,7 @@ ur_result_t ur_command_list_manager::bindlessImagesWaitExternalSemaphoreExp(
                  .zexCommandListAppendWaitExternalSemaphoresExp,
              (zeCommandList.get(), 1, &hExtSemaphore, &waitParams,
               zeSignalEvent, numWaitEvents, pWaitEvents));
-
+  RETURN("UR_RESULT_SUCCESS");
   return UR_RESULT_SUCCESS;
 }
 
@@ -1031,11 +1095,13 @@ ur_result_t ur_command_list_manager::bindlessImagesSignalExternalSemaphoreExp(
     ur_exp_external_semaphore_handle_t hSemaphore, bool hasSignalValue,
     uint64_t signalValue, wait_list_view &waitListView,
     ur_event_handle_t phEvent) {
+  ENTER("ur_command_list_manager::bindlessImagesSignalExternalSemaphoreExp", "ur_exp_external_semaphore_handle_t, bool, uint64_t, wait_list_view &, ur_event_handle_t");
   auto hPlatform = hContext->getPlatform();
   if (hPlatform->ZeExternalSemaphoreExt.Supported == false) {
     UR_LOG_LEGACY(ERR,
                   logger::LegacyMessage("[UR][L0] {} function not supported!"),
                   "{} function not supported!", __FUNCTION__);
+    RETURN("UR_RESULT_ERROR_UNSUPPORTED_FEATURE");
     return UR_RESULT_ERROR_UNSUPPORTED_FEATURE;
   }
 
@@ -1053,7 +1119,7 @@ ur_result_t ur_command_list_manager::bindlessImagesSignalExternalSemaphoreExp(
                  .zexCommandListAppendSignalExternalSemaphoresExp,
              (zeCommandList.get(), 1, &hExtSemaphore, &signalParams,
               zeSignalEvent, numWaitEvents, pWaitEvents));
-
+  RETURN("UR_RESULT_SUCCESS");
   return UR_RESULT_SUCCESS;
 }
 

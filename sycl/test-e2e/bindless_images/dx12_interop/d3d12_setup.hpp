@@ -9,6 +9,68 @@
 #include <windows.h>
 #include <wrl/client.h>
 
+// ******** BEGIN: DEBUG LOGGING MACROS ********
+#define NAMESPACE_TAG "SYCL-DX12-INTEROP"
+
+#ifndef ENABLE_DEBUG_LOG
+#define ENABLE_DEBUG_LOG 1
+#endif // ENABLE_DEBUG_LOG
+
+#ifndef ENABLE_NAMESPACE_TAG
+#define ENABLE_NAMESPACE_TAG 1
+#endif // ENABLE_NAMESPACE_TAG
+
+#ifndef ENABLE_THREAD_TAG
+#define ENABLE_THREAD_TAG 0
+#endif // ENABLE_THREAD_TAG
+
+#if ENABLE_DEBUG_LOG
+
+#include <format>
+#include <iostream>
+
+#if ENABLE_THREAD_TAG
+#include <sstream>
+#include <thread>
+#define __DBG_THREAD_ID__            \
+    std::ostringstream _dbgThreadID; \
+    _dbgThreadID << std::setw(6) << std::this_thread::get_id();
+#endif
+
+#if (ENABLE_NAMESPACE_TAG && defined(NAMESPACE_TAG))
+#if ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[{}.{}] ", NAMESPACE_TAG, _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__ std::string _dbgTag = std::format("[{}] ", NAMESPACE_TAG);
+#endif // ENABLE_THREAD_TAG
+#elif ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[>{}] ", _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__
+#endif // ENABLE_THREAD_TAG
+
+#define ENTER(funcName, params)                                    \
+    __DBG_TAG__                                                    \
+    std::string _dbgSig = std::format("{}({})", funcName, params); \
+    std::cerr << std::format("{}ENTER: {}\n", _dbgTag, _dbgSig)
+#define LEAVE std::cerr << std::format("{}LEAVE: {}\n", _dbgTag, _dbgSig)
+#define RETURN(val) std::cerr << std::format("{}LEAVE: {} --> {}\n", _dbgTag, _dbgSig, val)
+#define PUTS(msg) std::cerr << std::format("{}    -{}: {}\n", _dbgTag, __func__, msg)
+#define PRINT(frmt, ...) std::cerr << std::format("{}    -{}: " frmt, _dbgTag, __func__, __VA_ARGS__)
+
+#else // ENABLE_DEBUG_LOG
+#define ENTER(funcName, params)
+#define LEAVE
+#define RETURN(val)
+#define PUTS(msg)
+#define PRINT(frmt, ...)
+#endif // ENABLE_DEBUG_LOG
+// ******** END: DEBUG LOGGING MACROS ********
+
 using Microsoft::WRL::ComPtr;
 
 // ---------------------------------------------------------
@@ -767,6 +829,7 @@ struct D3D12ExportableFence {
 };
 
 inline D3D12ExportableFence createExportableFence(D3D12Context &ctx) {
+  ENTER("createExportableFence", "D3D12Context &");
   D3D12ExportableFence extFence;
   // KEY: Must be created with the SHARED flag
   ThrowIfFailed(ctx.device->CreateFence(0, D3D12_FENCE_FLAG_SHARED,
@@ -777,7 +840,8 @@ inline D3D12ExportableFence createExportableFence(D3D12Context &ctx) {
                                                GENERIC_ALL, nullptr,
                                                &extFence.sharedHandle),
                 "Failed to export Fence NT Handle");
-
+  PRINT("Created shared fence: DX12 handle = {}  shared NT handle = {}  value = {}\n", static_cast<void *>(extFence.fence.Get()), static_cast<void *>(extFence.sharedHandle), extFence.fenceValue);
+  LEAVE;
   return extFence;
 }
 
