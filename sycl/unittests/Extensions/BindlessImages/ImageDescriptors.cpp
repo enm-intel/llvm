@@ -186,6 +186,46 @@ TEST(BindlessImagesExtensionTests, ImageDescriptorPitchValidation) {
   }
 }
 
+// Regression test: descriptor row_pitch must propagate through the
+// ext_oneapi_copy path when the overload has no explicit pitch argument.
+// Previously fill_copy_args unconditionally clobbered rowPitch with the
+// (derived-from-extent) SrcPitch/DestPitch values, dropping the descriptor's
+// pitch.
+TEST(BindlessImagesExtensionTests, ImageDescriptorCopyPropagatesPitch) {
+  sycl::unittest::UrMock<> Mock;
+  mock::getCallbacks().set_replace_callback(
+      "urBindlessImagesImageCopyExp", &urBindlessImagesImageCopyExp_replace);
+
+  sycl::queue Q;
+
+  ImageCopyCallCounter = 0;
+  ImageCopyDstRowPitch = 0;
+  ImageCopyDstSlicePitch = 0;
+
+  constexpr size_t DescRowPitch = 4096;
+
+  syclexp::image_descriptor Desc(
+      sycl::range<2>{32, 32}, 4, sycl::image_channel_type::fp32,
+      syclexp::image_type::standard, 1, 1, 0, DescRowPitch);
+
+  syclexp::image_mem_handle DstHandle =
+      syclexp::alloc_image_mem(Desc, Q.get_device(), Q.get_context());
+
+  std::vector<float> HostSrc(32 * 32 * 4, 0.0f);
+
+  try {
+    Q.ext_oneapi_copy(HostSrc.data(), DstHandle, Desc);
+    Q.wait();
+  } catch (const sycl::exception &e) {
+    FAIL() << "Caught unexpected SYCL exception: " << e.what();
+  }
+
+  EXPECT_EQ(ImageCopyCallCounter, 1);
+  EXPECT_EQ(ImageCopyDstRowPitch, DescRowPitch);
+
+  syclexp::free_image_mem(DstHandle, syclexp::image_type::standard, Q);
+}
+
 TEST(BindlessImagesExtensionTests, ImageDescriptorPropagatesSlicePitch) {
   sycl::unittest::UrMock<> Mock;
   mock::getCallbacks().set_replace_callback(
