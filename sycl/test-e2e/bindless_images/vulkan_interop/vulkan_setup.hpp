@@ -33,6 +33,86 @@ typedef const wchar_t *LPCWSTR;
 #include <vulkan/vulkan_win32.h>
 #endif
 
+constexpr bool LineSep = true;
+
+constexpr uint32_t DefltPrec = 2;    // Default print precision of floats.
+constexpr uint32_t DefltCols = 480;  // Default print columns (in console).
+constexpr uint32_t DefltRows = 128;  // Default print rows.
+
+template<typename T>
+constexpr uint32_t Precision = std::is_floating_point_v<T> ? DefltPrec : 0;
+
+template<typename InT, typename AsT = InT>
+void printImg(const InT *data, const uint32_t wdth, const uint32_t hght,
+              const uint32_t numChannels,
+              const uint32_t dpt = 1, const uint32_t prec = Precision<AsT>,
+              const uint32_t cols = DefltCols, const uint32_t rows = DefltRows);
+
+// ******** BEGIN: DEBUG LOGGING MACROS ********
+#ifndef DEBUG_LOG_ENABLED
+#define NAMESPACE_TAG "SYCL-VK-INTEROP"
+
+#ifndef ENABLE_DEBUG_LOG
+#define ENABLE_DEBUG_LOG 1
+#endif // ENABLE_DEBUG_LOG
+
+#ifndef ENABLE_NAMESPACE_TAG
+#define ENABLE_NAMESPACE_TAG 1
+#endif // ENABLE_NAMESPACE_TAG
+
+#ifndef ENABLE_THREAD_TAG
+#define ENABLE_THREAD_TAG 0
+#endif // ENABLE_THREAD_TAG
+
+#if ENABLE_DEBUG_LOG
+
+#include <format>
+#include <iostream>
+
+#if ENABLE_THREAD_TAG
+#include <sstream>
+#include <thread>
+#define __DBG_THREAD_ID__            \
+    std::ostringstream _dbgThreadID; \
+    _dbgThreadID << std::setw(6) << std::this_thread::get_id();
+#endif
+
+#if (ENABLE_NAMESPACE_TAG && defined(NAMESPACE_TAG))
+#if ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[{}.{}] ", NAMESPACE_TAG, _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__ std::string _dbgTag = std::format("[{}] ", NAMESPACE_TAG);
+#endif // ENABLE_THREAD_TAG
+#elif ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[>{}] ", _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__
+#endif // ENABLE_THREAD_TAG
+
+#define ENTER(funcName, params)                                    \
+    __DBG_TAG__                                                    \
+    std::string _dbgSig = std::format("{}({})", funcName, params); \
+    std::cerr << std::format("{}ENTER: {}\n", _dbgTag, _dbgSig)
+#define LEAVE std::cerr << std::format("{}LEAVE: {}\n", _dbgTag, _dbgSig)
+#define RETURN(val) std::cerr << std::format("{}LEAVE: {} --> {}\n", _dbgTag, _dbgSig, val)
+#define PUTS(msg) std::cerr << std::format("{}    -{}: {}\n", _dbgTag, __func__, msg)
+#define PRINT(frmt, ...) std::cerr << std::format("{}    -{}: " frmt, _dbgTag, __func__, __VA_ARGS__)
+
+#else // ENABLE_DEBUG_LOG
+#define ENTER(funcName, params)
+#define LEAVE
+#define RETURN(val)
+#define PUTS(msg)
+#define PRINT(frmt, ...)
+#endif // ENABLE_DEBUG_LOG
+#define DEBUG_LOG_ENABLED
+#endif // ifndef DEBUG_LOG_ENABLED
+// ******** END: DEBUG LOGGING MACROS ********
+
 // ---------------------------------------------------------
 // PLATFORM ABSTRACTION
 // ---------------------------------------------------------
@@ -282,14 +362,18 @@ inline VkFormat getUnorm8Format(int channels) {
 
 // Generates a deterministic test value based on position and channel
 template <typename T>
-T generateTestValue(size_t index, int channel, size_t rangeMax) {
+T generateTestValue(size_t index, int channel) {
+// T generateTestValue(size_t index, int channel, size_t rangeMax) {
   if constexpr (std::is_floating_point_v<T>) {
     // Float: 0.0 -> 1.0 gradient with channel offset
-    float val = (float)index / (float)(rangeMax > 1 ? rangeMax - 1 : 1);
-    return static_cast<T>(val + (float)channel * 0.1f);
+    // float val = (float)index / (float)(rangeMax > 1 ? rangeMax - 1 : 1);
+    // return static_cast<T>(val + (float)channel * 0.1f);
+    T val = static_cast<T>(index + channel * 0.25f);
+    return val;
   } else {
     // Integer: Wrapping pattern to avoid overflow
-    return static_cast<T>((index + channel * 10) % 127);
+    uint64_t maxVal = static_cast<uint64_t>(std::numeric_limits<T>::max()) + 1ULL;
+    return static_cast<T>((index + channel) % maxVal);
   }
 }
 
@@ -328,17 +412,13 @@ inline uint32_t findMemoryType(VkPhysicalDevice physicalDevice,
 }
 
 inline VulkanContext createVulkanContext() {
+  ENTER("createVulkanContext", "");
   VulkanContext ctx;
   VkApplicationInfo appInfo{};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.apiVersion = VK_API_VERSION_1_2;
 
   std::vector<const char *> instanceExtensions;
-  VkInstanceCreateInfo createInfo{};
-  createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-  createInfo.pApplicationInfo = &appInfo;
-
-#ifndef ONT_VALIDATE
   uint32_t instanceExtensionCount = 0;
   VK_CHECK(vkEnumerateInstanceExtensionProperties(
       nullptr, &instanceExtensionCount, nullptr));
@@ -378,8 +458,13 @@ inline VulkanContext createVulkanContext() {
     throw std::runtime_error("failed to find Vulkan validation layer!");
   }
 
+  VkInstanceCreateInfo createInfo{};
+  createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+  createInfo.pApplicationInfo = &appInfo;
   createInfo.ppEnabledLayerNames = &validationLayerName;
   createInfo.enabledLayerCount = 1;
+  createInfo.enabledExtensionCount = (uint32_t)instanceExtensions.size();
+  createInfo.ppEnabledExtensionNames = instanceExtensions.data();
 
   VkDebugUtilsMessengerCreateInfoEXT debugUtilsMessengerInfo{};
   debugUtilsMessengerInfo.sType =
@@ -397,16 +482,8 @@ inline VulkanContext createVulkanContext() {
   // that occur while creating the instance itself. This debug util messangegr
   // will be alive only during instance creation.
   createInfo.pNext = &debugUtilsMessengerInfo;
-#else
-  ctx.debugMessenger = VK_NULL_HANDLE;
-#endif
-
-  createInfo.enabledExtensionCount = (uint32_t)instanceExtensions.size();
-  createInfo.ppEnabledExtensionNames = instanceExtensions.data();
-
   VK_CHECK(vkCreateInstance(&createInfo, nullptr, &ctx.instance));
 
-#ifndef ONT_VALIDATE
   // Create a persistent debug messenger that stays alive for the application's
   // lifetime to capture all subsequent events.
   auto vkCreateDebugUtilsMessengerFuncPtr =
@@ -419,8 +496,8 @@ inline VulkanContext createVulkanContext() {
     throw std::runtime_error(
         "Failed to fetch vkCreateDebugUtilsMessengerEXT function pointer!");
   }
-#endif
 
+  PUTS("Enumerating physical devices and selecting one");
   uint32_t deviceCount = 0;
   vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, nullptr);
   std::vector<VkPhysicalDevice> devices(deviceCount);
@@ -442,6 +519,7 @@ inline VulkanContext createVulkanContext() {
     }
   }
 
+  PUTS("Creating logical device and retrieving graphics queue");
   VkDeviceQueueCreateInfo queueCreateInfo{};
   queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
   queueCreateInfo.queueFamilyIndex = ctx.queueFamilyIndex;
@@ -450,11 +528,13 @@ inline VulkanContext createVulkanContext() {
   queueCreateInfo.pQueuePriorities = &queuePriority;
 
   // Enable timeline semaphore feature (Vulkan 1.2 core)
+  PUTS("Enabling Vulkan Timeline Semaphore feature");
   VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures{};
   timelineFeatures.sType =
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
   timelineFeatures.timelineSemaphore = VK_TRUE;
 
+  PUTS("Creating Vulkan logical device with required extensions and features");
   VkDeviceCreateInfo deviceCreateInfo{};
   deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
   deviceCreateInfo.pNext = &timelineFeatures;
@@ -470,12 +550,12 @@ inline VulkanContext createVulkanContext() {
                           &ctx.device));
   vkGetDeviceQueue(ctx.device, ctx.queueFamilyIndex, 0, &ctx.queue);
 
+  LEAVE;
   return ctx;
 }
 
 inline void cleanupVulkanContext(VulkanContext &ctx) {
   vkDestroyDevice(ctx.device, nullptr);
-#ifndef ONT_VALIDATE
   auto vkDestroyDebugUtilsMessengerFuncPtr =
       (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
           ctx.instance, "vkDestroyDebugUtilsMessengerEXT");
@@ -483,7 +563,6 @@ inline void cleanupVulkanContext(VulkanContext &ctx) {
     vkDestroyDebugUtilsMessengerFuncPtr(ctx.instance, ctx.debugMessenger,
                                         nullptr);
   }
-#endif
   vkDestroyInstance(ctx.instance, nullptr);
 }
 
@@ -494,6 +573,7 @@ inline ImageResources createExportableImage(
                               VK_IMAGE_USAGE_SAMPLED_BIT |
                               VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                               VK_IMAGE_USAGE_TRANSFER_DST_BIT) {
+  ENTER("createExportableImage", "VulkanContext&, VkExtent3D, VkFormat, VkImageType, VkImageTiling, VkImageUsageFlags");
   VkImageCreateInfo imageInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
   imageInfo.imageType = type;
   imageInfo.extent = extent;
@@ -544,10 +624,12 @@ inline ImageResources createExportableImage(
   VK_CHECK(vkAllocateMemory(ctx.device, &allocInfo, nullptr, &res.memory));
   VK_CHECK(vkBindImageMemory(ctx.device, res.image, res.memory, 0));
 
+  LEAVE;
   return res;
 }
 
 inline VkSemaphore createExportableSemaphore(VulkanContext &ctx) {
+  ENTER("createExportableSemaphore", "VulkanContext&");
   VkExportSemaphoreCreateInfo exportInfo{};
   exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO;
   exportInfo.handleTypes = PLATFORM_SEM_HANDLE_TYPE;
@@ -558,12 +640,14 @@ inline VkSemaphore createExportableSemaphore(VulkanContext &ctx) {
 
   VkSemaphore semaphore;
   VK_CHECK(vkCreateSemaphore(ctx.device, &semaphoreInfo, nullptr, &semaphore));
+  LEAVE;
   return semaphore;
 }
 
 inline VkSemaphore
 createExportableTimelineSemaphore(VulkanContext &ctx,
                                   uint64_t initialValue = 0) {
+  ENTER("createExportableTimelineSemaphore", "VulkanContext&, uint64_t");
   VkSemaphoreTypeCreateInfo typeInfo{};
   typeInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
   typeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
@@ -580,6 +664,7 @@ createExportableTimelineSemaphore(VulkanContext &ctx,
 
   VkSemaphore semaphore;
   VK_CHECK(vkCreateSemaphore(ctx.device, &semaphoreInfo, nullptr, &semaphore));
+  LEAVE;
   return semaphore;
 }
 
@@ -590,6 +675,7 @@ createExportableTimelineSemaphore(VulkanContext &ctx,
 inline BufferResources createExportableBuffer(
     VulkanContext &ctx, VkDeviceSize size, VkBufferUsageFlags usage,
     VkExternalMemoryHandleTypeFlagBits handleType = PLATFORM_MEM_HANDLE_TYPE) {
+  ENTER("createExportableBuffer", "VulkanContext&, VkDeviceSize, VkBufferUsageFlags, VkExternalMemoryHandleTypeFlagBits");
   VkExternalMemoryBufferCreateInfo extMemInfo{};
   extMemInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
   extMemInfo.handleTypes = handleType;
@@ -627,12 +713,14 @@ inline BufferResources createExportableBuffer(
 
   VK_CHECK(vkAllocateMemory(ctx.device, &allocInfo, nullptr, &res.memory));
   VK_CHECK(vkBindBufferMemory(ctx.device, res.buffer, res.memory, 0));
+  LEAVE;
   return res;
 }
 
 inline BufferResources createStagingBuffer(VulkanContext &ctx,
                                            VkDeviceSize size,
                                            VkBufferUsageFlags usage) {
+  ENTER("createStagingBuffer", "VulkanContext&, VkDeviceSize, VkBufferUsageFlags");
   BufferResources res;
   res.size = size;
 
@@ -655,6 +743,7 @@ inline BufferResources createStagingBuffer(VulkanContext &ctx,
 
   VK_CHECK(vkAllocateMemory(ctx.device, &allocInfo, nullptr, &res.memory));
   VK_CHECK(vkBindBufferMemory(ctx.device, res.buffer, res.memory, 0));
+  LEAVE;
   return res;
 }
 
@@ -769,12 +858,14 @@ inline int getSemaphoreFd(VulkanContext &ctx, VkSemaphore semaphore) {
 template <typename Functor>
 void uploadImage(VulkanContext &ctx, ImageResources &imgRes, int channels,
                  VkSemaphore signalSemaphore, Functor generator) {
+  ENTER("uploadImage", "VulkanContext&, ImageResources&, int, VkSemaphore, Functor");
   uint32_t width = imgRes.extent.width;
   uint32_t height = imgRes.extent.height;
   uint32_t depth = imgRes.extent.depth;
   size_t totalPixels = width * height * depth;
 
   // 1. Create Staging Buffer
+  PUTS("Creating staging buffer for data upload");
   VkBuffer stagingBuffer;
   VkDeviceMemory stagingMemory;
   VkDeviceSize dataSize = totalPixels * channels * 4; // Max safe size
@@ -795,6 +886,7 @@ void uploadImage(VulkanContext &ctx, ImageResources &imgRes, int channels,
   VK_CHECK(vkBindBufferMemory(ctx.device, stagingBuffer, stagingMemory, 0));
 
   // 2. Map and Fill
+  PUTS("Mapping staging buffer and filling with generated data");
   void *data;
   VK_CHECK(vkMapMemory(ctx.device, stagingMemory, 0, dataSize, 0, &data));
 
@@ -1047,9 +1139,10 @@ bool uploadAndVerify(VulkanContext &ctx, ImageResources &imgRes,
 
   for (size_t i = 0; i < totalPixels; i++) {
     for (int c = 0; c < channels; ++c) {
-      pixelData[i * channels + c] = generateTestValue<T>(i, c, totalPixels);
+      pixelData[i * channels + c] = generateTestValue<T>(i, c);
     }
   }
+  printImg(pixelData, texWidth, texHeight, channels);
   vkUnmapMemory(ctx.device, stagingBufferMemory);
 
   // COPY TO IMAGE
@@ -1174,7 +1267,7 @@ bool uploadAndVerify(VulkanContext &ctx, ImageResources &imgRes,
   for (size_t i = 0; i < totalPixels * channels; i++) {
     size_t pixelIdx = i / channels;
     int channelIdx = i % channels;
-    T expected = generateTestValue<T>(pixelIdx, channelIdx, totalPixels);
+    T expected = generateTestValue<T>(pixelIdx, channelIdx);
 
     if (!checkValue(checkData[i], expected)) {
       valid = false;
@@ -1241,7 +1334,6 @@ inline void cleanupVulkan(VulkanContext &ctx, ImageResources &res) {
   vkDestroyImage(ctx.device, res.image, nullptr);
   vkFreeMemory(ctx.device, res.memory, nullptr);
   vkDestroyDevice(ctx.device, nullptr);
-#ifndef ONT_VALIDATE
   auto vkDestroyDebugUtilsMessengerFuncPtr =
       (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
           ctx.instance, "vkDestroyDebugUtilsMessengerEXT");
@@ -1249,6 +1341,5 @@ inline void cleanupVulkan(VulkanContext &ctx, ImageResources &res) {
     vkDestroyDebugUtilsMessengerFuncPtr(ctx.instance, ctx.debugMessenger,
                                         nullptr);
   }
-#endif
   vkDestroyInstance(ctx.instance, nullptr);
 }
