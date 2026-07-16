@@ -199,10 +199,13 @@ TEST(BindlessImagesExtensionTests, ImageDescriptorCopyPropagatesPitch) {
   sycl::queue Q;
 
   ImageCopyCallCounter = 0;
+  ImageCopySrcRowPitch = 0;
   ImageCopyDstRowPitch = 0;
   ImageCopyDstSlicePitch = 0;
 
   constexpr size_t DescRowPitch = 4096;
+  // 32 * 4 channels * sizeof(float) = 512
+  constexpr size_t TightHostPitch = 32 * 4 * sizeof(float);
 
   syclexp::image_descriptor Desc(
       sycl::range<2>{32, 32}, 4, sycl::image_channel_type::fp32,
@@ -217,11 +220,16 @@ TEST(BindlessImagesExtensionTests, ImageDescriptorCopyPropagatesPitch) {
     Q.ext_oneapi_copy(HostSrc.data(), DstHandle, Desc);
     Q.wait();
   } catch (const sycl::exception &e) {
+    syclexp::free_image_mem(DstHandle, syclexp::image_type::standard, Q);
     FAIL() << "Caught unexpected SYCL exception: " << e.what();
   }
 
   EXPECT_EQ(ImageCopyCallCounter, 1);
+  // Image side (dst) gets the descriptor's row_pitch.
   EXPECT_EQ(ImageCopyDstRowPitch, DescRowPitch);
+  // Memory side (src) must be the tight host stride, NOT the descriptor's
+  // row_pitch. UR adapters use pSrcImageDesc->rowPitch as the host stride.
+  EXPECT_EQ(ImageCopySrcRowPitch, TightHostPitch);
 
   syclexp::free_image_mem(DstHandle, syclexp::image_type::standard, Q);
 }
