@@ -24,6 +24,7 @@
 #endif               // TEST_SEMAPHORE_IMPORT
 
 #include <limits>
+#include <iostream>
 
 using namespace dx11_interop;
 namespace syclexp = sycl::ext::oneapi::experimental;
@@ -482,6 +483,8 @@ int main() {
 #ifdef TEST_SEMAPHORE_IMPORT
   // External semaphore ops require an in-order queue backed by immediate
   // command lists (see sycl_ext_oneapi_bindless_images.asciidoc).
+  std::cout << "======== Running tests for SYCL-DX11 texture sharing interoperability...\n";
+  std::cout << "======== Get SYCL queue and device...\n";
   sycl::queue syclQueue{
       {sycl::property::queue::in_order{},
        sycl::ext::intel::property::queue::immediate_command_list{}}};
@@ -491,11 +494,13 @@ int main() {
   sycl::device syclDevice = syclQueue.get_device();
 
   // Initialize D3D11 and create DX11 programs state from the SYCL device
+  std::cout << "======== Initialize D3D11 and create DX11 programs state from the SYCL device...\n";
   D3D11ProgramState d3d11ProgramState{syclDevice};
 
   int errors = 0;
 
   // Test 1D texture interop
+  std::cout << "======== Running 1D texture interop tests...\n";
 #ifdef TEST_SMALL_IMAGE_SIZE
   const sycl::range<1> globalSize1D{1024};
 #else
@@ -518,6 +523,7 @@ int main() {
                                       globalSize1D, sycl::range{256});
 
   // Test 2D texture interop
+  std::cout << "======== Running 2D texture interop tests...\n";
 #ifdef TEST_SMALL_IMAGE_SIZE
   const sycl::range<2> globalSize2D[] = {
       sycl::range{64, 64}, sycl::range{64, 64}, sycl::range{64, 64},
@@ -544,6 +550,7 @@ int main() {
                                       globalSize2D[4], sycl::range{16, 16});
 
 // Test 3D texture interop
+std::cout << "======== Running 3D texture interop tests...\n";
 #ifdef TEST_SMALL_IMAGE_SIZE
   const sycl::range<3> globalSize3D[] = {
       sycl::range{64, 16, 4}, sycl::range{64, 16, 4}, sycl::range{64, 64, 4},
