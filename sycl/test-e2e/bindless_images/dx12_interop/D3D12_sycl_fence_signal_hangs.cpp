@@ -73,7 +73,6 @@ int main() {
     // advance the shared fence from the CPU.
     ComPtr<ID3D12Fence> cpuFence;
     HANDLE cpuFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    uint64_t cpuFenceValue = 0;
     ThrowIfFailed(
         d3dCtx.device->CreateFence(0, D3D12_FENCE_FLAG_NONE,
                                    IID_PPV_ARGS(&cpuFence)),
@@ -117,7 +116,7 @@ int main() {
     // GPU-side Wait(N+1).
     // Step 1: D3D12 GPU side -- enqueue Signal(N), Wait(N+1), Signal(N+2)
     constexpr uint64_t N = 1;
-    
+
     std::cout << "[D3D12] cmdQueue->Signal(extFence, " << N << ")\n"
     ThrowIfFailed(
         d3dCtx.cmdQueue->Signal(extFence.fence.Get(), N),
