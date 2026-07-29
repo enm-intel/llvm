@@ -116,6 +116,8 @@ int main() {
     // work is submitted asynchronously -- NO q.wait() before the D3D12
     // GPU-side Wait(N+1).
     // Step 1: D3D12 GPU side -- enqueue Signal(N), Wait(N+1), Signal(N+2)
+    constexpr uint64_t N = 1;
+    
     std::cout << "[D3D12] cmdQueue->Signal(extFence, " << N << ")\n"
     ThrowIfFailed(
         d3dCtx.cmdQueue->Signal(extFence.fence.Get(), N),
