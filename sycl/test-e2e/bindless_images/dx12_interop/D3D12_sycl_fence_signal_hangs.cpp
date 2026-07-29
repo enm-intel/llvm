@@ -16,12 +16,12 @@
   signalSemaphoreAsync / waitSemaphoreAsync with D3D12 fences in
   ChameleonRT's DXR backend (render_dxr.cpp):
 
-    GPU queue:  [render work] → Signal(fence, N)
-                               → Wait(fence, N+1)     <- must be unblocked by SYCL
-                               → Signal(fence, N+2)
+    GPU queue:  [render work] --> Signal(fence, N)
+                              --> Wait(fence, N+1)     <- must be unblocked by SYCL
+                              --> Signal(fence, N+2)
     SYCL queue: wait_external_semaphore(sem, N)
-                → trivial kernel
-                → signal_external_semaphore(sem, N+1)  <- must unblock GPU Wait
+                --> trivial kernel
+                --> signal_external_semaphore(sem, N+1)  <- must unblock GPU Wait
 
   The CPU enqueues all D3D12 GPU-side commands first, then submits the
   SYCL work, and immediately waits for fence value N+2 with a 5-second
@@ -50,9 +50,9 @@
 
 namespace syclexp = sycl::ext::oneapi::experimental;
 
-// Timeout in milliseconds for the final CPU wait.  5 seconds is more than
+// Timeout in milliseconds for the final CPU wait. 500 milliseconds is more than
 // enough for a trivial kernel; a hang will blow past this.
-static constexpr DWORD kWaitTimeoutMs = 5000;
+static constexpr DWORD kWaitTimeoutMs = 500;
 
 int main() {
     std::cout << "D3D12/SYCL async fence-signal hang reproducer\n";
@@ -80,7 +80,7 @@ int main() {
         "Failed to create CPU fence");
 
     // ---------------------------------------------------------------
-    // SYCL setup — must use an immediate command list queue for
+    // SYCL setup -- must use an immediate command list queue for
     // external semaphore ops.
     // ---------------------------------------------------------------
     sycl::queue q{sycl::property_list{
@@ -98,8 +98,12 @@ int main() {
         syclexp::external_semaphore_descriptor<syclexp::resource_win32_handle>{
             extFence.sharedHandle,
             syclexp::external_semaphore_handle_type::win32_nt_dx12_fence};
+    std::cout << "[SYCL] Importing external semaphore from D3D12 fence handle\n";
     syclexp::external_semaphore syclSem =
         syclexp::import_external_semaphore(semDesc, syclDevice, syclContext);
+
+    std::cout << "[SYCL] Imported external semaphore from D3D12 fence handle: "
+              << extFence.sharedHandle << "\n";
 
     // ---------------------------------------------------------------
     // The protocol (matches ChameleonRT render_dxr.cpp):
@@ -109,16 +113,10 @@ int main() {
     //   N+2 = 3   (D3D12 GPU signals after "tonemap" work; CPU waits here)
     //
     // All D3D12 GPU-side commands are enqueued first.  Then the SYCL
-    // work is submitted asynchronously — NO q.wait() before the D3D12
+    // work is submitted asynchronously -- NO q.wait() before the D3D12
     // GPU-side Wait(N+1).
-    // ---------------------------------------------------------------
-    const uint64_t N = 1;
-
-    // Step 1: D3D12 GPU side — enqueue Signal(N), Wait(N+1), Signal(N+2)
-    //
-    // Signal(N): simulates the end of rendering work.
+    // Step 1: D3D12 GPU side -- enqueue Signal(N), Wait(N+1), Signal(N+2)
     std::cout << "[D3D12] cmdQueue->Signal(extFence, " << N << ")\n"
-              << std::flush;
     ThrowIfFailed(
         d3dCtx.cmdQueue->Signal(extFence.fence.Get(), N),
         "cmdQueue->Signal(N) failed");
@@ -140,7 +138,7 @@ int main() {
         d3dCtx.cmdQueue->Signal(extFence.fence.Get(), N + 2),
         "cmdQueue->Signal(N+2) failed");
 
-    // Step 2: SYCL — submit async: wait(N) → kernel → signal(N+1)
+    // Step 2: SYCL -- submit async: wait(N) --> kernel --> signal(N+1)
     // Crucially, NO q.wait() is called here before the CPU timeout wait
     // below.  This is the exact pattern used by OIDN's async interop.
     std::cout << "[SYCL] ext_oneapi_wait_external_semaphore(syclSem, " << N
@@ -196,7 +194,7 @@ int main() {
                   "WaitForSingleObject returned unexpected value");
 
     std::cout << "[PASS] Fence reached " << (N + 2)
-              << " — SYCL async signal successfully unblocked the D3D12 GPU "
+              << " -- SYCL async signal successfully unblocked the D3D12 GPU "
                  "queue.\n";
 
     // ---------------------------------------------------------------
