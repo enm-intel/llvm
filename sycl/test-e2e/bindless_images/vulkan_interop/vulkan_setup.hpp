@@ -339,15 +339,12 @@ inline VkFormat getUnorm8Format(uint32_t channels) {
 // ---------------------------------------------------------
 template <typename T>
 inline T generateTestValue(size_t idx, uint32_t channel) {
-// T generateTestValue(size_t idx, int channel, size_t rangeMax) {
   if constexpr (std::is_floating_point_v<T>) {
-    // Float: 0.0 -> 1.0 gradient with channel offset
-    // float val = (float)idx / (float)(rangeMax > 1 ? rangeMax - 1 : 1);
-    // return static_cast<T>(val + (float)channel * 0.1f);
+    // Float: Simple ramp pattern with channel offset
     T val = static_cast<T>(idx + channel * 0.25f);
     return val;
   } else {
-    // Integer: Wrapping pattern to avoid overflow
+    // Integer: Ramp with wrapping pattern to avoid overflow
     // Extra parens around the qualified name so a stray min/max macro from a
     // windows.h included ahead of us can't turn this into a macro invocation.
     const uint64_t maxVal =
