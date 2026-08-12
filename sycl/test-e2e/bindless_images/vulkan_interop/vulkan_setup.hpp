@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -11,17 +12,27 @@
 // out when doing the device pass compilation
 
 #define VK_USE_PLATFORM_WIN32_KHR
+
+// vulkan.h itself does `#include <windows.h>` when VK_USE_PLATFORM_WIN32_KHR is
+// defined, so we don't get a say in whether windows.h comes along. What we do
+// get a say in is how much damage it does: without NOMINMAX it defines
+// `max(a,b)`/`min(a,b)` as macros, which then eat any
+// `std::numeric_limits<T>::max()` in this header. WIN32_LEAN_AND_MEAN drops the
+// socket/GDI/OLE bulk we never touch.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #endif
 
 #include <vulkan/vulkan.h>
 
 #ifdef _WIN32
-// #define WIN32_LEAN_AND_MEAN
-// #define NOMINMAX
-// #include <windows.h>
-
-// I just can't, in good conscience, bring myself to import all of windows.h
-// when we only need 6 void typedefs.
+// windows.h (via vulkan.h, above) already declares these; the typedefs are kept
+// as documentation of the handful of types vulkan_win32.h actually needs, and
+// are compatible redeclarations.
 typedef void *HANDLE;
 typedef struct HINSTANCE__ *HINSTANCE;
 typedef struct HWND__ *HWND;
@@ -337,7 +348,10 @@ inline T generateTestValue(size_t idx, uint32_t channel) {
     return val;
   } else {
     // Integer: Wrapping pattern to avoid overflow
-    constexpr uint64_t maxVal = static_cast<uint64_t>(std::numeric_limits<T>::max()) / 2;
+    // Extra parens around the qualified name so a stray min/max macro from a
+    // windows.h included ahead of us can't turn this into a macro invocation.
+    const uint64_t maxVal =
+        static_cast<uint64_t>((std::numeric_limits<T>::max)()) / 2;
     return static_cast<T>((idx + channel) % maxVal);
   }
 }
