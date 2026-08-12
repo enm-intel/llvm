@@ -33,6 +33,18 @@ typedef const wchar_t *LPCWSTR;
 #include <vulkan/vulkan_win32.h>
 #endif
 
+template <typename T> 
+inline constexpr uint32_t to_u32(T val) { return static_cast<uint32_t>(val); }
+
+template <typename T> 
+inline constexpr uint64_t to_u64(T val) { return static_cast<uint64_t>(val); }
+
+template <typename T> 
+inline constexpr size_t to_size(T val) { return static_cast<size_t>(val); }
+
+template <typename T, typename U=T> 
+inline constexpr T to_T(U val) { return static_cast<T>(val); }
+
 constexpr bool LineSep = true;
 
 constexpr uint32_t DefltPrec = 2;    // Default print precision of floats.
@@ -53,7 +65,7 @@ void printImg(const InT *data, const uint32_t wdth, const uint32_t hght,
 #define NAMESPACE_TAG "SYCL-VK-INTEROP"
 
 #ifndef ENABLE_DEBUG_LOG
-#define ENABLE_DEBUG_LOG 1
+#define ENABLE_DEBUG_LOG 0
 #endif // ENABLE_DEBUG_LOG
 
 #ifndef ENABLE_NAMESPACE_TAG
@@ -231,8 +243,8 @@ inline std::string getFormatString(VkFormat fmt) {
   }
 }
 
-template <typename T> VkFormat getVulkanFormat(int channels);
-template <> inline VkFormat getVulkanFormat<float>(int channels) {
+template <typename T> VkFormat getVulkanFormat(uint32_t channels);
+template <> inline VkFormat getVulkanFormat<float>(uint32_t channels) {
   switch (channels) {
   case 1: return VK_FORMAT_R32_SFLOAT;
   case 2: return VK_FORMAT_R32G32_SFLOAT;
@@ -241,7 +253,7 @@ template <> inline VkFormat getVulkanFormat<float>(int channels) {
     throw std::runtime_error("Unsupported channels for float");
   }
 }
-template <> inline VkFormat getVulkanFormat<int32_t>(int channels) {
+template <> inline VkFormat getVulkanFormat<int32_t>(uint32_t channels) {
   switch (channels) {
   case 1: return VK_FORMAT_R32_SINT;
   case 2: return VK_FORMAT_R32G32_SINT;
@@ -250,7 +262,7 @@ template <> inline VkFormat getVulkanFormat<int32_t>(int channels) {
     throw std::runtime_error("Unsupported channels for int32");
   }
 }
-template <> inline VkFormat getVulkanFormat<uint32_t>(int channels) {
+template <> inline VkFormat getVulkanFormat<uint32_t>(uint32_t channels) {
   switch (channels) {
   case 1: return VK_FORMAT_R32_UINT;
   case 2: return VK_FORMAT_R32G32_UINT;
@@ -259,7 +271,7 @@ template <> inline VkFormat getVulkanFormat<uint32_t>(int channels) {
     throw std::runtime_error("Unsupported channels for uint32");
   }
 }
-template <> inline VkFormat getVulkanFormat<int16_t>(int channels) {
+template <> inline VkFormat getVulkanFormat<int16_t>(uint32_t channels) {
   switch (channels) {
   case 1: return VK_FORMAT_R16_SINT;
   case 2: return VK_FORMAT_R16G16_SINT;
@@ -268,7 +280,7 @@ template <> inline VkFormat getVulkanFormat<int16_t>(int channels) {
     throw std::runtime_error("Unsupported channels for int16");
   }
 }
-template <> inline VkFormat getVulkanFormat<uint16_t>(int channels) {
+template <> inline VkFormat getVulkanFormat<uint16_t>(uint32_t channels) {
   switch (channels) {
   case 1: return VK_FORMAT_R16_UINT;
   case 2: return VK_FORMAT_R16G16_UINT;
@@ -277,7 +289,7 @@ template <> inline VkFormat getVulkanFormat<uint16_t>(int channels) {
     throw std::runtime_error("Unsupported channels for uint16");
   }
 }
-template <> inline VkFormat getVulkanFormat<uint8_t>(int channels) {
+template <> inline VkFormat getVulkanFormat<uint8_t>(uint32_t channels) {
   switch (channels) {
   case 1: return VK_FORMAT_R8_UINT;
   case 2: return VK_FORMAT_R8G8_UINT;
@@ -286,7 +298,7 @@ template <> inline VkFormat getVulkanFormat<uint8_t>(int channels) {
     throw std::runtime_error("Unsupported channels for uint8");
   }
 }
-template <> inline VkFormat getVulkanFormat<int8_t>(int channels) {
+template <> inline VkFormat getVulkanFormat<int8_t>(uint32_t channels) {
   switch (channels) {
   case 1: return VK_FORMAT_R8_SINT;
   case 2: return VK_FORMAT_R8G8_SINT;
@@ -295,7 +307,7 @@ template <> inline VkFormat getVulkanFormat<int8_t>(int channels) {
     throw std::runtime_error("Unsupported channels for int8");
   }
 }
-inline VkFormat getUnorm8Format(int channels) {
+inline VkFormat getUnorm8Format(uint32_t channels) {
   switch (channels) {
   case 1: return VK_FORMAT_R8_UNORM;
   case 2: return VK_FORMAT_R8G8_UNORM;
@@ -310,9 +322,12 @@ inline VkFormat getUnorm8Format(int channels) {
 // some test utils
 // ---------------------------------------------------------
 
+// ---------------------------------------------------------
+// GENERATORS
 // Generates a deterministic test value based on position and channel
+// ---------------------------------------------------------
 template <typename T>
-inline T generateTestValue(size_t idx, int channel) {
+inline T generateTestValue(size_t idx, uint32_t channel) {
 // T generateTestValue(size_t idx, int channel, size_t rangeMax) {
   if constexpr (std::is_floating_point_v<T>) {
     // Float: 0.0 -> 1.0 gradient with channel offset
@@ -322,10 +337,20 @@ inline T generateTestValue(size_t idx, int channel) {
     return val;
   } else {
     // Integer: Wrapping pattern to avoid overflow
-    uint64_t maxVal = static_cast<uint64_t>(std::numeric_limits<T>::max()) >> 1;
-    return static_cast<T>((idx + channel) & maxVal);
+    constexpr uint64_t maxVal = static_cast<uint64_t>(std::numeric_limits<T>::max()) / 2;
+    return static_cast<T>((idx + channel) % maxVal);
   }
 }
+template <typename T>
+inline T generateValueA(size_t x, size_t y, uint32_t channel) {
+  return generateTestValue<T>(x + y, channel);
+}
+
+template <typename T>
+inline T generateValueB(size_t x, size_t y, uint32_t channel) {
+  return generateTestValue<T>(2 * x + y, channel);
+}
+// ---------------------------------------------------------
 
 // Compares values with appropriate tolerance for Floats
 template <typename T> inline bool checkValue(T actual, T expect) {
@@ -827,13 +852,13 @@ inline int getSemaphoreFd(VulkanContext &ctx, VkSemaphore semaphore) {
 // ---------------------------------------------------------
 template <typename Functor>
 inline void uploadImage(VulkanContext &ctx, ImageResources &imgRes,
-                        int channels, VkSemaphore signalSemaphore,
+                        uint32_t channels, VkSemaphore signalSemaphore,
                         Functor generator) {
   ENTER("uploadImage", "VulkanContext&, ImageResources&, int, VkSemaphore, Functor");
   uint32_t width = imgRes.extent.width;
   uint32_t height = imgRes.extent.height;
   uint32_t depth = imgRes.extent.depth;
-  size_t totalPixels = width * height * depth;
+  size_t totalPixels = to_size(width) * to_size(height) * to_size(depth);
 
   // 1. Create Staging Buffer
   PUTS("Creating staging buffer for data upload");
@@ -865,7 +890,7 @@ inline void uploadImage(VulkanContext &ctx, ImageResources &imgRes,
   T *ptr = static_cast<T *>(data);
 
   for (size_t i = 0; i < totalPixels; ++i) {
-    for (int c = 0; c < channels; ++c) {
+    for (uint32_t c = 0; c < channels; ++c) {
       ptr[i * channels + c] = generator(i, c);
     }
   }
@@ -938,7 +963,7 @@ inline void uploadImage(VulkanContext &ctx, ImageResources &imgRes,
 // ---------------------------------------------------------
 template <typename Functor>
 inline bool verifyImage(VulkanContext &ctx, ImageResources &imgRes,
-                        int channels, VkSemaphore waitSemaphore,
+                        uint32_t channels, VkSemaphore waitSemaphore,
                         Functor expectedGenerator) {
   uint32_t width = imgRes.extent.width;
   uint32_t height = imgRes.extent.height;
@@ -951,7 +976,7 @@ inline bool verifyImage(VulkanContext &ctx, ImageResources &imgRes,
     return false;
   }
 
-  size_t totalPixels = width * height * depth;
+  size_t totalPixels = to_size(width) * to_size(height) * to_size(depth);
 
   // Create Staging Buffer
   VkBuffer stagingBuffer;
@@ -1039,7 +1064,7 @@ inline bool verifyImage(VulkanContext &ctx, ImageResources &imgRes,
   int errors = 0;
 
   for (size_t i = 0; i < totalPixels; ++i) {
-    for (int c = 0; c < channels; ++c) {
+    for (uint32_t c = 0; c < channels; ++c) {
       T actual = ptr[i * channels + c];
       T expect = expectedGenerator(i, c);
 
@@ -1070,7 +1095,7 @@ inline bool verifyImage(VulkanContext &ctx, ImageResources &imgRes,
 template <typename T>
 inline bool uploadAndVerify(VulkanContext &ctx, ImageResources &imgRes,
                             VkSemaphore signalSemaphore = VK_NULL_HANDLE,
-                            int channels = 4) {
+                            uint32_t channels = 4) {
   size_t texWidth = imgRes.extent.width;
   size_t texHeight = imgRes.extent.height;
   size_t texDepth = imgRes.extent.depth;
@@ -1110,7 +1135,7 @@ inline bool uploadAndVerify(VulkanContext &ctx, ImageResources &imgRes,
   T *pixelData = (T *)data;
 
   for (size_t i = 0, idx = 0; i < totalPixels; i++) {
-    for (int c = 0; c < channels; ++c, ++idx) {
+    for (uint32_t c = 0; c < channels; ++c, ++idx) {
       pixelData[idx] = generateTestValue<T>(i, c);
     }
   }
@@ -1237,7 +1262,7 @@ inline bool uploadAndVerify(VulkanContext &ctx, ImageResources &imgRes,
 
   bool valid = true;
   for (size_t i = 0, idx = 0; i < totalPixels; i++) {
-    for (int c = 0; c < channels; ++c, ++idx) {
+    for (uint32_t c = 0; c < channels; ++c, ++idx) {
       T expect = generateTestValue<T>(i, c);
       T actual = checkData[idx];
 
@@ -1271,7 +1296,7 @@ inline bool uploadAndVerify(VulkanContext &ctx, ImageResources &imgRes,
 // Used by the Boss Battle to pass custom functors
 template <typename Functor>
 inline bool uploadAndVerify(VulkanContext &ctx, ImageResources &imgRes,
-                            VkSemaphore signalSemaphore, int channels,
+                            VkSemaphore signalSemaphore, uint32_t channels,
                             Functor generator) {
   // Same logic, but using the passed generator
   uploadImage(ctx, imgRes, channels, VK_NULL_HANDLE, generator);

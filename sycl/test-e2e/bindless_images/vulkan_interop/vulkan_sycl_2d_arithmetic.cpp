@@ -130,33 +130,58 @@
 
 namespace syclexp = sycl::ext::oneapi::experimental;
 
+// clang-format off
+using sycl_img_data_t   = sycl::image_channel_type;
+using sycl_img_samp_h   = syclexp::sampled_image_handle;
+using sycl_img_unsamp_h = syclexp::unsampled_image_handle;
+using sycl_img_mem_h    = syclexp::image_mem_handle;
+using sycl_img_desc     = syclexp::image_descriptor;
+using sycl_ext_sem      = syclexp::external_semaphore;
+
+// Some commonly used channel types
+constexpr sycl_img_data_t sycl_unorm8 = sycl_img_data_t::unorm_int8;
+constexpr sycl_img_data_t sycl_sint8  = sycl_img_data_t::signed_int8;
+constexpr sycl_img_data_t sycl_uint8  = sycl_img_data_t::unsigned_int8;
+constexpr sycl_img_data_t sycl_half   = sycl_img_data_t::fp16;
+constexpr sycl_img_data_t sycl_sint16 = sycl_img_data_t::signed_int16;
+constexpr sycl_img_data_t sycl_uint16 = sycl_img_data_t::unsigned_int16;
+constexpr sycl_img_data_t sycl_sint32 = sycl_img_data_t::signed_int32;
+constexpr sycl_img_data_t sycl_uint32 = sycl_img_data_t::unsigned_int32;
+constexpr sycl_img_data_t sycl_float  = sycl_img_data_t::fp32;
+
+// Commonly used channel orders
+constexpr sycl::image_channel_order sycl_r    = sycl::image_channel_order::r;
+constexpr sycl::image_channel_order sycl_rg   = sycl::image_channel_order::rg;
+constexpr sycl::image_channel_order sycl_rgb  = sycl::image_channel_order::rgb;
+constexpr sycl::image_channel_order sycl_rgba = sycl::image_channel_order::rgba;
+
 // ---------------------------------------------------------
 // SYCL TYPE MAPPING
 // ---------------------------------------------------------
-template <typename T> sycl::image_channel_type getSyclChannelType();
-template <> inline sycl::image_channel_type getSyclChannelType<float>() {
-  return sycl::image_channel_type::fp32;
+template <typename T> sycl_img_data_t getSyclChannelType();
+template <> inline sycl_img_data_t getSyclChannelType<float>() {
+  return sycl_img_data_t::fp32;
 }
-template <> inline sycl::image_channel_type getSyclChannelType<int32_t>() {
-  return sycl::image_channel_type::signed_int32;
+template <> inline sycl_img_data_t getSyclChannelType<int32_t>() {
+  return sycl_img_data_t::signed_int32;
 }
-template <> inline sycl::image_channel_type getSyclChannelType<uint32_t>() {
-  return sycl::image_channel_type::unsigned_int32;
+template <> inline sycl_img_data_t getSyclChannelType<uint32_t>() {
+  return sycl_img_data_t::unsigned_int32;
 }
-template <> inline sycl::image_channel_type getSyclChannelType<int16_t>() {
-  return sycl::image_channel_type::signed_int16;
+template <> inline sycl_img_data_t getSyclChannelType<int16_t>() {
+  return sycl_img_data_t::signed_int16;
 }
-template <> inline sycl::image_channel_type getSyclChannelType<uint16_t>() {
-  return sycl::image_channel_type::unsigned_int16;
+template <> inline sycl_img_data_t getSyclChannelType<uint16_t>() {
+  return sycl_img_data_t::unsigned_int16;
 }
-template <> inline sycl::image_channel_type getSyclChannelType<uint8_t>() {
-  return sycl::image_channel_type::unsigned_int8;
+template <> inline sycl_img_data_t getSyclChannelType<uint8_t>() {
+  return sycl_img_data_t::unsigned_int8;
 }
-template <> inline sycl::image_channel_type getSyclChannelType<int8_t>() {
-  return sycl::image_channel_type::signed_int8;
+template <> inline sycl_img_data_t getSyclChannelType<int8_t>() {
+  return sycl_img_data_t::signed_int8;
 }
 
-template <> inline VkFormat getVulkanFormat<sycl::half>(int channels) {
+template <> inline VkFormat getVulkanFormat<sycl::half>(uint32_t channels) {
   switch (channels) {
   case 1:
     return VK_FORMAT_R16_SFLOAT;
@@ -168,34 +193,15 @@ template <> inline VkFormat getVulkanFormat<sycl::half>(int channels) {
     throw std::runtime_error("Unsupported channels for half");
   }
 }
-template <> inline sycl::image_channel_type getSyclChannelType<sycl::half>() {
-  return sycl::image_channel_type::fp16;
-}
-
-// ---------------------------------------------------------
-// GENERATORS
-// ---------------------------------------------------------
-template <typename T> T generateValueA(size_t x, size_t y, int channel) {
-  float val = (float)(x + y) / 100.0f;
-  if constexpr (std::is_floating_point_v<T>)
-    return static_cast<T>(val + channel * 0.1f);
-  else
-    return static_cast<T>((x + y + channel * 10) % 64);
-}
-
-template <typename T> T generateValueB(size_t x, size_t y, int channel) {
-  float val = (float)(x * 2 + y) / 100.0f;
-  if constexpr (std::is_floating_point_v<T>)
-    return static_cast<T>(val + channel * 0.2f);
-  else
-    return static_cast<T>((x * 2 + y + channel * 5) % 64);
+template <> inline sycl_img_data_t getSyclChannelType<sycl::half>() {
+  return sycl_img_data_t::fp16;
 }
 
 template <typename T>
-int runTest(
-    int width, int height, int channels, bool useLinear, bool useSemaphores,
-    bool useSampled, VkFormat fmtOverride = VK_FORMAT_UNDEFINED,
-    std::optional<sycl::image_channel_type> syclOverride = std::nullopt) {
+int runTest(uint32_t width, uint32_t height, uint32_t channels, bool useLinear,
+            bool useSemaphores, bool useSampled,
+            VkFormat fmtOverride = VK_FORMAT_UNDEFINED,
+            std::optional<sycl_img_data_t> syclOverride = std::nullopt) {
 
   // --- Setup ---
   VkImageTiling tiling =
@@ -334,7 +340,7 @@ int runTest(
       // Note: If A and B are same dims/format, pitch is likely same
     }
 
-    sycl::image_channel_type syclType = syclOverride.has_value()
+    sycl_img_data_t syclType = syclOverride.has_value()
                                             ? syclOverride.value()
                                             : getSyclChannelType<T>();
     // bindless image ranges use (x,y,z) order,
@@ -397,7 +403,7 @@ int runTest(
           int x = item.get_id(1);
           int y = item.get_id(0);
 
-          bool isUnorm = (syclType == sycl::image_channel_type::unorm_int8);
+          bool isUnorm = (syclType == sycl_img_data_t::unorm_int8);
           using Vec4 = sycl::vec<float, 4>;
           Vec4 valA(0, 0, 0, 0);
           Vec4 valB(0, 0, 0, 0);
@@ -468,7 +474,7 @@ int runTest(
           int x = item.get_id(1);
           int y = item.get_id(0);
 
-          bool isUnorm = (syclType == sycl::image_channel_type::unorm_int8);
+          bool isUnorm = (syclType == sycl_img_data_t::unorm_int8);
           using Vec4 = sycl::vec<float, 4>;
           Vec4 valA(0, 0, 0, 0);
           Vec4 valB(0, 0, 0, 0);
@@ -568,7 +574,7 @@ int runTest(
           T b = generateValueB<T>(x, y, c);
 
           if (syclOverride.has_value() &&
-              syclOverride.value() == sycl::image_channel_type::unorm_int8) {
+              syclOverride.value() == sycl_img_data_t::unorm_int8) {
             float fa = (float)a / 255.0f;
             float fb = (float)b / 255.0f;
             // USE PARENTHESES TO PREVENT MACRO EXPANSION
@@ -616,15 +622,15 @@ int runTest(
 }
 
 int main(int argc, char **argv) {
-  int width = 4;
-  int height = 4;
-  int channels = 4;
+  uint32_t width = 4;
+  uint32_t height = 4;
+  uint32_t channels = 4;
   bool useLinear = false;
   bool useSemaphores = false;
   bool useSampled = false;
   std::string type = "float";
 
-  std::vector<int> dims;
+  std::vector<uint32_t> dims;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -633,7 +639,7 @@ int main(int argc, char **argv) {
     else if (arg == "--linear")
       useLinear = true;
     else if (arg == "--channels" && i + 1 < argc)
-      channels = std::stoi(argv[++i]);
+      channels = to_u32(std::stoi(argv[++i]));
     else if (arg == "--type" && i + 1 < argc)
       type = argv[++i];
     else if (arg == "--sampled")
@@ -641,8 +647,8 @@ int main(int argc, char **argv) {
     else if (arg.find("x") != std::string::npos) {
       size_t xPos = arg.find("x");
       try {
-        width = std::stoi(arg.substr(0, xPos));
-        height = std::stoi(arg.substr(xPos + 1));
+        width = to_u32(std::stoi(arg.substr(0, xPos)));
+        height = to_u32(std::stoi(arg.substr(xPos + 1)));
       } catch (...) {
       }
     }
@@ -697,7 +703,7 @@ int main(int argc, char **argv) {
   if (type == "unorm8") {
     return runTest<uint8_t>(width, height, channels, useLinear, useSemaphores,
                             useSampled, getUnorm8Format(channels),
-                            sycl::image_channel_type::unorm_int8);
+                            sycl_img_data_t::unorm_int8);
   }
 
   std::cerr << "Unknown type: " << type << std::endl;

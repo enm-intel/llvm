@@ -160,12 +160,6 @@ constexpr sycl::image_channel_order sycl_rg   = sycl::image_channel_order::rg;
 constexpr sycl::image_channel_order sycl_rgb  = sycl::image_channel_order::rgb;
 constexpr sycl::image_channel_order sycl_rgba = sycl::image_channel_order::rgba;
 
-template <typename T> 
-inline constexpr uint32_t to_u32(T val) { return static_cast<uint32_t>(val); }
-
-template <typename T, typename U=T> 
-inline constexpr T to_T(U val) { return static_cast<T>(val); }
-
 // clang-format on
 
 #define VERBOSE_PRINT
@@ -191,7 +185,7 @@ template <> inline sycl_img_data_t getSyclChannelType<int8_t    >() { return syc
 // clang-format on
 //----------------------------------------------------------------------------//
 // SYCL CHANNEL ORDER (for unsampled)
-inline sycl::image_channel_order getSyclChannelOrder(int channels) {
+inline sycl::image_channel_order getSyclChannelOrder(uint32_t channels) {
   switch (channels) {
   case 1: return sycl_r;
   case 2: return sycl_rg;
@@ -202,7 +196,7 @@ inline sycl::image_channel_order getSyclChannelOrder(int channels) {
 }
 //----------------------------------------------------------------------------//
 // VULKAN FORMAT MAPPING
-template <> inline VkFormat getVulkanFormat<sycl::half>(int channels) {
+template <> inline VkFormat getVulkanFormat<sycl::half>(uint32_t channels) {
   switch (channels) {
   case 1: return VK_FORMAT_R16_SFLOAT;
   case 2: return VK_FORMAT_R16G16_SFLOAT;
@@ -540,15 +534,15 @@ bool verifyResults(sycl::buffer<T, 1> &dstBuf, uint32_t wdth, uint32_t hght,
   bool passed = true;
   int errors = 0;
 
-  const size_t numPix = wdth * hght;
-  const size_t numVals = numPix * channels;
+  const size_t numPixs = to_size(wdth) * to_size(hght);
+  const size_t numVals = numPixs * to_size(channels);
 
   T *data = new T[numVals];
   for (size_t i = 0; i < numVals; ++i) data[i] = hostAcc[i];
   printImg<T>(data, wdth, hght, channels);
 
-  for (size_t pix = 0, idx = 0; pix < numPix; ++pix) {
-    for (size_t c = 0; c < channels; ++c, ++idx) {
+  for (size_t pix = 0, idx = 0; pix < numPixs; ++pix) {
+    for (uint32_t c = 0; c < channels; ++c, ++idx) {
       T expect = generateTestValue<T>(pix, c);
       if (!checkValue(data[idx], expect)) {
         if (errors < 10) {
@@ -571,6 +565,7 @@ bool verifyResults(sycl::buffer<T, 1> &dstBuf, uint32_t wdth, uint32_t hght,
 }
 
 //----------------------------------------------------------------------------//
+// Templated function to run the sampled image kernel and verify results.
 template <typename T>
 bool runKernelSampled(sycl::buffer<T, 1> &dstBuf, uint32_t wdth, uint32_t hght,
                       uint32_t channels, sycl::queue &q, sycl_img_mem_h imgMem,
@@ -643,6 +638,7 @@ bool runKernelSampled(sycl::buffer<T, 1> &dstBuf, uint32_t wdth, uint32_t hght,
   return passed;
 }
 //----------------------------------------------------------------------------//
+// Templated function to run the unsampled image kernel and verify results.
 template <typename T>
 bool runKernelUnsamp(sycl::buffer<T, 1> &dstBuf, uint32_t wdth, uint32_t hght,
                      uint32_t channels, sycl::queue &q, sycl_img_mem_h imgMem,
@@ -738,7 +734,7 @@ int runTest(uint32_t wdth, uint32_t hght, uint32_t channels, bool useLinear,
 
   { // Get the Vulkan row pitch to set the corresponding image descriptor.
     size_t rowPitch = getRowPitch(vkCtx, imgRes.image);
-    size_t rowBytes = static_cast<size_t>(wdth) * channels * sizeof(T);
+    size_t rowBytes = to_size(wdth) * to_size(channels) * sizeof(T);
     PRINT("Vulkan image row pitch: {:5} bytes\n", rowPitch);
     PRINT("Linear image row bytes: {:5} bytes\n", rowBytes);
   }
@@ -835,7 +831,7 @@ int runTest(uint32_t wdth, uint32_t hght, uint32_t channels, bool useLinear,
                                       /*num_samples=*/0, rowPitch);
 
     // Map external memory
-    size_t numElems = wdth * hght * channels;
+    size_t numElems = to_size(wdth) * to_size(hght) * to_size(channels);
     sycl_img_mem_h imgMem;
     if (useLinear) {
       PUTS("Mapping external linear memory");
