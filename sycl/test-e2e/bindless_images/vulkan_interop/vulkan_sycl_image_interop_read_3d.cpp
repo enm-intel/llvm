@@ -335,11 +335,10 @@ int runTest(
     sycl::host_accessor hostAcc(checkBuf, sycl::read_only);
     bool passed = true;
     int errorCount = 0;
-    size_t totalPixels = width * height * depth;
 
     for (size_t i = 0; i < totalValues; ++i) {
       T expected =
-          generateTestValue<T>(i / channels, i % channels, totalPixels);
+          generateTestValue<T>(i / channels, i % channels);
 
       if (!checkValue(hostAcc[i], expected)) {
         passed = false;

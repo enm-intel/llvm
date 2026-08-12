@@ -565,6 +565,8 @@ image_mem_handle map_external_image_memory(external_mem extMem,
 
   ur_image_desc_t urDesc;
   ur_image_format_t urFormat;
+  // ur_exp_image_user_pitch_desc_t UserPitchMarker;
+  // populate_ur_structs(desc, urDesc, urFormat, /*pitch=*/0, &UserPitchMarker);
   populate_ur_structs(desc, urDesc, urFormat);
 
   ur_exp_external_mem_handle_t urExternalMem{extMem.raw_handle};

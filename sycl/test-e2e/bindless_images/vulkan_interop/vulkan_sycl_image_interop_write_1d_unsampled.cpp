@@ -278,17 +278,17 @@ int runTest(
         bool isUnorm = (syclType == sycl::image_channel_type::unorm_int8);
         if (isUnorm) {
           if (channels == 1) {
-            float v = (float)generateTestValue<T>(x, 0, width) / 255.0f;
+            float v = (float)generateTestValue<T>(x, 0) / 255.0f;
             syclexp::write_image(unsampledHandle, x, v);
           } else if (channels == 2) {
-            float v1 = (float)generateTestValue<T>(x, 0, width) / 255.0f;
-            float v2 = (float)generateTestValue<T>(x, 1, width) / 255.0f;
+            float v1 = (float)generateTestValue<T>(x, 0) / 255.0f;
+            float v2 = (float)generateTestValue<T>(x, 1) / 255.0f;
             syclexp::write_image(unsampledHandle, x, sycl::float2(v1, v2));
           } else { // 4
-            float v1 = (float)generateTestValue<T>(x, 0, width) / 255.0f;
-            float v2 = (float)generateTestValue<T>(x, 1, width) / 255.0f;
-            float v3 = (float)generateTestValue<T>(x, 2, width) / 255.0f;
-            float v4 = (float)generateTestValue<T>(x, 3, width) / 255.0f;
+            float v1 = (float)generateTestValue<T>(x, 0) / 255.0f;
+            float v2 = (float)generateTestValue<T>(x, 1) / 255.0f;
+            float v3 = (float)generateTestValue<T>(x, 2) / 255.0f;
+            float v4 = (float)generateTestValue<T>(x, 3) / 255.0f;
             syclexp::write_image(unsampledHandle, x,
                                  sycl::float4(v1, v2, v3, v4));
           }
@@ -297,19 +297,19 @@ int runTest(
 
         // Standard Path
         if (channels == 1) {
-          T val = generateTestValue<T>(x, 0, width);
+          T val = generateTestValue<T>(x, 0);
           syclexp::write_image(unsampledHandle, x, val);
         } else if (channels == 2) {
           using Vec2 = sycl::vec<T, 2>;
-          Vec2 px(generateTestValue<T>(x, 0, width),
-                  generateTestValue<T>(x, 1, width));
+          Vec2 px(generateTestValue<T>(x, 0),
+                  generateTestValue<T>(x, 1));
           syclexp::write_image(unsampledHandle, x, px);
         } else {
           using Vec4 = sycl::vec<T, 4>;
-          Vec4 px(generateTestValue<T>(x, 0, width),
-                  generateTestValue<T>(x, 1, width),
-                  generateTestValue<T>(x, 2, width),
-                  generateTestValue<T>(x, 3, width));
+          Vec4 px(generateTestValue<T>(x, 0),
+                  generateTestValue<T>(x, 1),
+                  generateTestValue<T>(x, 2),
+                  generateTestValue<T>(x, 3));
           syclexp::write_image(unsampledHandle, x, px);
         }
       });
@@ -389,7 +389,7 @@ int runTest(
     bool passed = true;
     int errorCount = 0;
     for (size_t i = 0; i < width * channels; ++i) {
-      T expected = generateTestValue<T>(i / channels, i % channels, width);
+      T expected = generateTestValue<T>(i / channels, i % channels);
       if (!checkValue(vData[i], expected)) {
         passed = false;
         if (errorCount++ < 5)

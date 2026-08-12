@@ -220,7 +220,7 @@ int runTest(
     T *pixelData = static_cast<T *>(data);
     for (size_t i = 0; i < totalPixels; ++i) {
       for (int c = 0; c < channels; ++c) {
-        auto testValue = generateTestValue<T>(i, c, totalPixels);
+        auto testValue = generateTestValue<T>(i, c);
         pixelData[i * channels + c] = testValue;
       }
     }
@@ -424,7 +424,7 @@ int runTest(
     for (size_t i = 0; i < totalPixels; ++i) {
       size_t pixelIdx = i / channels;
       int ch = i % channels;
-      T expected = generateTestValue<T>(pixelIdx, ch, totalPixels) / T(2);
+      T expected = generateTestValue<T>(pixelIdx, ch) / T(2);
       if (!checkValue(readbackPixelData[i], expected)) {
         passed = false;
         std::cout << "Mismatch at " << i << " ch:" << ch

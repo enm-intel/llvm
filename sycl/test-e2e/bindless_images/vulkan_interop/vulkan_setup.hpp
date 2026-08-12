@@ -33,6 +33,86 @@ typedef const wchar_t *LPCWSTR;
 #include <vulkan/vulkan_win32.h>
 #endif
 
+constexpr bool LineSep = true;
+
+constexpr uint32_t DefltPrec = 2;    // Default print precision of floats.
+constexpr uint32_t DefltCols = 480;  // Default print columns (in console).
+constexpr uint32_t DefltRows = 128;  // Default print rows.
+
+template<typename T>
+constexpr uint32_t Precision = std::is_floating_point_v<T> ? DefltPrec : 0;
+
+template<typename InT, typename AsT = InT>
+void printImg(const InT *data, const uint32_t wdth, const uint32_t hght,
+              const uint32_t numChannels,
+              const uint32_t dpt = 1, const uint32_t prec = Precision<AsT>,
+              const uint32_t cols = DefltCols, const uint32_t rows = DefltRows);
+
+// ******** BEGIN: DEBUG LOGGING MACROS ********
+#ifndef DEBUG_LOG_ENABLED
+#define NAMESPACE_TAG "SYCL-VK-INTEROP"
+
+#ifndef ENABLE_DEBUG_LOG
+#define ENABLE_DEBUG_LOG 1
+#endif // ENABLE_DEBUG_LOG
+
+#ifndef ENABLE_NAMESPACE_TAG
+#define ENABLE_NAMESPACE_TAG 1
+#endif // ENABLE_NAMESPACE_TAG
+
+#ifndef ENABLE_THREAD_TAG
+#define ENABLE_THREAD_TAG 0
+#endif // ENABLE_THREAD_TAG
+
+#if ENABLE_DEBUG_LOG
+
+#include <format>
+#include <iostream>
+
+#if ENABLE_THREAD_TAG
+#include <sstream>
+#include <thread>
+#define __DBG_THREAD_ID__            \
+    std::ostringstream _dbgThreadID; \
+    _dbgThreadID << std::setw(6) << std::this_thread::get_id();
+#endif
+
+#if (ENABLE_NAMESPACE_TAG && defined(NAMESPACE_TAG))
+#if ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[{}.{}] ", NAMESPACE_TAG, _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__ std::string _dbgTag = std::format("[{}] ", NAMESPACE_TAG);
+#endif // ENABLE_THREAD_TAG
+#elif ENABLE_THREAD_TAG
+#define __DBG_TAG__   \
+    __DBG_THREAD_ID__ \
+    std::string _dbgTag = std::format("[>{}] ", _dbgThreadID.str());
+#else // ENABLE_THREAD_TAG
+#define __DBG_TAG__
+#endif // ENABLE_THREAD_TAG
+
+#define ENTER(funcName, params)                                    \
+    __DBG_TAG__                                                    \
+    std::string _dbgSig = std::format("{}({})", funcName, params); \
+    std::cerr << std::format("{}ENTER: {}\n", _dbgTag, _dbgSig)
+#define LEAVE std::cerr << std::format("{}LEAVE: {}\n", _dbgTag, _dbgSig)
+#define RETURN(val) std::cerr << std::format("{}LEAVE: {} --> {}\n", _dbgTag, _dbgSig, val)
+#define PUTS(msg) std::cerr << std::format("{}    -{}: {}\n", _dbgTag, __func__, msg)
+#define PRINT(frmt, ...) std::cerr << std::format("{}    -{}: " frmt, _dbgTag, __func__, __VA_ARGS__)
+
+#else // ENABLE_DEBUG_LOG
+#define ENTER(funcName, params)
+#define LEAVE
+#define RETURN(val)
+#define PUTS(msg)
+#define PRINT(frmt, ...)
+#endif // ENABLE_DEBUG_LOG
+#define DEBUG_LOG_ENABLED
+#endif // ifndef DEBUG_LOG_ENABLED
+// ******** END: DEBUG LOGGING MACROS ********
+
 // ---------------------------------------------------------
 // PLATFORM ABSTRACTION
 // ---------------------------------------------------------
@@ -116,63 +196,36 @@ struct BufferResources {
 // ---------------------------------------------------------
 // FORMAT MAPPING & STRINGS (Unchanged)
 // ---------------------------------------------------------
-
+// clang-format off
 inline std::string getFormatString(VkFormat fmt) {
   switch (fmt) {
-  case VK_FORMAT_R32_SFLOAT:
-    return "VK_FORMAT_R32_SFLOAT";
-  case VK_FORMAT_R32G32_SFLOAT:
-    return "VK_FORMAT_R32G32_SFLOAT";
-  case VK_FORMAT_R32G32B32A32_SFLOAT:
-    return "VK_FORMAT_R32G32B32A32_SFLOAT";
-  case VK_FORMAT_R16_SFLOAT:
-    return "VK_FORMAT_R16_SFLOAT";
-  case VK_FORMAT_R16G16_SFLOAT:
-    return "VK_FORMAT_R16G16_SFLOAT";
-  case VK_FORMAT_R16G16B16A16_SFLOAT:
-    return "VK_FORMAT_R16G16B16A16_SFLOAT";
-  case VK_FORMAT_R32_SINT:
-    return "VK_FORMAT_R32_SINT";
-  case VK_FORMAT_R32G32_SINT:
-    return "VK_FORMAT_R32G32_SINT";
-  case VK_FORMAT_R32G32B32A32_SINT:
-    return "VK_FORMAT_R32G32B32A32_SINT";
-  case VK_FORMAT_R32_UINT:
-    return "VK_FORMAT_R32_UINT";
-  case VK_FORMAT_R32G32_UINT:
-    return "VK_FORMAT_R32G32_UINT";
-  case VK_FORMAT_R32G32B32A32_UINT:
-    return "VK_FORMAT_R32G32B32A32_UINT";
-  case VK_FORMAT_R16_SINT:
-    return "VK_FORMAT_R16_SINT";
-  case VK_FORMAT_R16G16_SINT:
-    return "VK_FORMAT_R16G16_SINT";
-  case VK_FORMAT_R16G16B16A16_SINT:
-    return "VK_FORMAT_R16G16B16A16_SINT";
-  case VK_FORMAT_R16_UINT:
-    return "VK_FORMAT_R16_UINT";
-  case VK_FORMAT_R16G16_UINT:
-    return "VK_FORMAT_R16G16_UINT";
-  case VK_FORMAT_R16G16B16A16_UINT:
-    return "VK_FORMAT_R16G16B16A16_UINT";
-  case VK_FORMAT_R8_SINT:
-    return "VK_FORMAT_R8_SINT";
-  case VK_FORMAT_R8G8_SINT:
-    return "VK_FORMAT_R8G8_SINT";
-  case VK_FORMAT_R8G8B8A8_SINT:
-    return "VK_FORMAT_R8G8B8A8_SINT";
-  case VK_FORMAT_R8_UINT:
-    return "VK_FORMAT_R8_UINT";
-  case VK_FORMAT_R8G8_UINT:
-    return "VK_FORMAT_R8G8_UINT";
-  case VK_FORMAT_R8G8B8A8_UINT:
-    return "VK_FORMAT_R8G8B8A8_UINT";
-  case VK_FORMAT_R8_UNORM:
-    return "VK_FORMAT_R8_UNORM";
-  case VK_FORMAT_R8G8_UNORM:
-    return "VK_FORMAT_R8G8_UNORM";
-  case VK_FORMAT_R8G8B8A8_UNORM:
-    return "VK_FORMAT_R8G8B8A8_UNORM";
+  case VK_FORMAT_R32_SFLOAT         : return "VK_FORMAT_R32_SFLOAT";
+  case VK_FORMAT_R32G32_SFLOAT      : return "VK_FORMAT_R32G32_SFLOAT";
+  case VK_FORMAT_R32G32B32A32_SFLOAT: return "VK_FORMAT_R32G32B32A32_SFLOAT";
+  case VK_FORMAT_R16_SFLOAT         : return "VK_FORMAT_R16_SFLOAT";
+  case VK_FORMAT_R16G16_SFLOAT      : return "VK_FORMAT_R16G16_SFLOAT";
+  case VK_FORMAT_R16G16B16A16_SFLOAT: return "VK_FORMAT_R16G16B16A16_SFLOAT";
+  case VK_FORMAT_R32_SINT           : return "VK_FORMAT_R32_SINT";
+  case VK_FORMAT_R32G32_SINT        : return "VK_FORMAT_R32G32_SINT";
+  case VK_FORMAT_R32G32B32A32_SINT  : return "VK_FORMAT_R32G32B32A32_SINT";
+  case VK_FORMAT_R32_UINT           : return "VK_FORMAT_R32_UINT";
+  case VK_FORMAT_R32G32_UINT        : return "VK_FORMAT_R32G32_UINT";
+  case VK_FORMAT_R32G32B32A32_UINT  : return "VK_FORMAT_R32G32B32A32_UINT";
+  case VK_FORMAT_R16_SINT           : return "VK_FORMAT_R16_SINT";
+  case VK_FORMAT_R16G16_SINT        : return "VK_FORMAT_R16G16_SINT";
+  case VK_FORMAT_R16G16B16A16_SINT  : return "VK_FORMAT_R16G16B16A16_SINT";
+  case VK_FORMAT_R16_UINT           : return "VK_FORMAT_R16_UINT";
+  case VK_FORMAT_R16G16_UINT        : return "VK_FORMAT_R16G16_UINT";
+  case VK_FORMAT_R16G16B16A16_UINT  : return "VK_FORMAT_R16G16B16A16_UINT";
+  case VK_FORMAT_R8_SINT            : return "VK_FORMAT_R8_SINT";
+  case VK_FORMAT_R8G8_SINT          : return "VK_FORMAT_R8G8_SINT";
+  case VK_FORMAT_R8G8B8A8_SINT      : return "VK_FORMAT_R8G8B8A8_SINT";
+  case VK_FORMAT_R8_UINT            : return "VK_FORMAT_R8_UINT";
+  case VK_FORMAT_R8G8_UINT          : return "VK_FORMAT_R8G8_UINT";
+  case VK_FORMAT_R8G8B8A8_UINT      : return "VK_FORMAT_R8G8B8A8_UINT";
+  case VK_FORMAT_R8_UNORM           : return "VK_FORMAT_R8_UNORM";
+  case VK_FORMAT_R8G8_UNORM         : return "VK_FORMAT_R8G8_UNORM";
+  case VK_FORMAT_R8G8B8A8_UNORM     : return "VK_FORMAT_R8G8B8A8_UNORM";
   default:
     return "UNKNOWN_FORMAT (" + std::to_string(fmt) + ")";
   }
@@ -181,100 +234,77 @@ inline std::string getFormatString(VkFormat fmt) {
 template <typename T> VkFormat getVulkanFormat(int channels);
 template <> inline VkFormat getVulkanFormat<float>(int channels) {
   switch (channels) {
-  case 1:
-    return VK_FORMAT_R32_SFLOAT;
-  case 2:
-    return VK_FORMAT_R32G32_SFLOAT;
-  case 4:
-    return VK_FORMAT_R32G32B32A32_SFLOAT;
+  case 1: return VK_FORMAT_R32_SFLOAT;
+  case 2: return VK_FORMAT_R32G32_SFLOAT;
+  case 4: return VK_FORMAT_R32G32B32A32_SFLOAT;
   default:
     throw std::runtime_error("Unsupported channels for float");
   }
 }
 template <> inline VkFormat getVulkanFormat<int32_t>(int channels) {
   switch (channels) {
-  case 1:
-    return VK_FORMAT_R32_SINT;
-  case 2:
-    return VK_FORMAT_R32G32_SINT;
-  case 4:
-    return VK_FORMAT_R32G32B32A32_SINT;
+  case 1: return VK_FORMAT_R32_SINT;
+  case 2: return VK_FORMAT_R32G32_SINT;
+  case 4: return VK_FORMAT_R32G32B32A32_SINT;
   default:
     throw std::runtime_error("Unsupported channels for int32");
   }
 }
 template <> inline VkFormat getVulkanFormat<uint32_t>(int channels) {
   switch (channels) {
-  case 1:
-    return VK_FORMAT_R32_UINT;
-  case 2:
-    return VK_FORMAT_R32G32_UINT;
-  case 4:
-    return VK_FORMAT_R32G32B32A32_UINT;
+  case 1: return VK_FORMAT_R32_UINT;
+  case 2: return VK_FORMAT_R32G32_UINT;
+  case 4: return VK_FORMAT_R32G32B32A32_UINT;
   default:
     throw std::runtime_error("Unsupported channels for uint32");
   }
 }
 template <> inline VkFormat getVulkanFormat<int16_t>(int channels) {
   switch (channels) {
-  case 1:
-    return VK_FORMAT_R16_SINT;
-  case 2:
-    return VK_FORMAT_R16G16_SINT;
-  case 4:
-    return VK_FORMAT_R16G16B16A16_SINT;
+  case 1: return VK_FORMAT_R16_SINT;
+  case 2: return VK_FORMAT_R16G16_SINT;
+  case 4: return VK_FORMAT_R16G16B16A16_SINT;
   default:
     throw std::runtime_error("Unsupported channels for int16");
   }
 }
 template <> inline VkFormat getVulkanFormat<uint16_t>(int channels) {
   switch (channels) {
-  case 1:
-    return VK_FORMAT_R16_UINT;
-  case 2:
-    return VK_FORMAT_R16G16_UINT;
-  case 4:
-    return VK_FORMAT_R16G16B16A16_UINT;
+  case 1: return VK_FORMAT_R16_UINT;
+  case 2: return VK_FORMAT_R16G16_UINT;
+  case 4: return VK_FORMAT_R16G16B16A16_UINT;
   default:
     throw std::runtime_error("Unsupported channels for uint16");
   }
 }
 template <> inline VkFormat getVulkanFormat<uint8_t>(int channels) {
   switch (channels) {
-  case 1:
-    return VK_FORMAT_R8_UINT;
-  case 2:
-    return VK_FORMAT_R8G8_UINT;
-  case 4:
-    return VK_FORMAT_R8G8B8A8_UINT;
+  case 1: return VK_FORMAT_R8_UINT;
+  case 2: return VK_FORMAT_R8G8_UINT;
+  case 4: return VK_FORMAT_R8G8B8A8_UINT;
   default:
     throw std::runtime_error("Unsupported channels for uint8");
   }
 }
 template <> inline VkFormat getVulkanFormat<int8_t>(int channels) {
   switch (channels) {
-  case 1:
-    return VK_FORMAT_R8_SINT;
-  case 2:
-    return VK_FORMAT_R8G8_SINT;
-  case 4:
-    return VK_FORMAT_R8G8B8A8_SINT;
+  case 1: return VK_FORMAT_R8_SINT;
+  case 2: return VK_FORMAT_R8G8_SINT;
+  case 4: return VK_FORMAT_R8G8B8A8_SINT;
   default:
     throw std::runtime_error("Unsupported channels for int8");
   }
 }
 inline VkFormat getUnorm8Format(int channels) {
   switch (channels) {
-  case 1:
-    return VK_FORMAT_R8_UNORM;
-  case 2:
-    return VK_FORMAT_R8G8_UNORM;
-  case 4:
-    return VK_FORMAT_R8G8B8A8_UNORM;
+  case 1: return VK_FORMAT_R8_UNORM;
+  case 2: return VK_FORMAT_R8G8_UNORM;
+  case 4: return VK_FORMAT_R8G8B8A8_UNORM;
   default:
     throw std::runtime_error("Unsupported channels for UNORM8");
   }
 }
+// clang-format on
 
 // ---------------------------------------------------------
 // some test utils
@@ -282,23 +312,27 @@ inline VkFormat getUnorm8Format(int channels) {
 
 // Generates a deterministic test value based on position and channel
 template <typename T>
-inline T generateTestValue(size_t index, int channel, size_t rangeMax) {
+inline T generateTestValue(size_t idx, int channel) {
+// T generateTestValue(size_t idx, int channel, size_t rangeMax) {
   if constexpr (std::is_floating_point_v<T>) {
     // Float: 0.0 -> 1.0 gradient with channel offset
-    float val = (float)index / (float)(rangeMax > 1 ? rangeMax - 1 : 1);
-    return static_cast<T>(val + (float)channel * 0.1f);
+    // float val = (float)idx / (float)(rangeMax > 1 ? rangeMax - 1 : 1);
+    // return static_cast<T>(val + (float)channel * 0.1f);
+    T val = static_cast<T>(idx + channel * 0.25f);
+    return val;
   } else {
     // Integer: Wrapping pattern to avoid overflow
-    return static_cast<T>((index + channel * 10) % 127);
+    uint64_t maxVal = static_cast<uint64_t>(std::numeric_limits<T>::max()) >> 1;
+    return static_cast<T>((idx + channel) & maxVal);
   }
 }
 
 // Compares values with appropriate tolerance for Floats
-template <typename T> inline bool checkValue(T actual, T expected) {
+template <typename T> inline bool checkValue(T actual, T expect) {
   if constexpr (std::is_floating_point_v<T>) {
-    return std::abs(actual - expected) < 0.01f;
+    return std::abs(actual - expect) < 0.01f;
   } else {
-    return actual == expected;
+    return actual == expect;
   }
 }
 
@@ -337,6 +371,7 @@ inline uint32_t findMemoryType(VkPhysicalDevice physicalDevice,
 }
 
 inline VulkanContext createVulkanContext() {
+  ENTER("createVulkanContext", "");
   VulkanContext ctx;
   VkApplicationInfo appInfo{};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -430,6 +465,7 @@ inline VulkanContext createVulkanContext() {
   }
 #endif
 
+  PUTS("Enumerating physical devices and selecting one");
   uint32_t deviceCount = 0;
   vkEnumeratePhysicalDevices(ctx.instance, &deviceCount, nullptr);
   std::vector<VkPhysicalDevice> devices(deviceCount);
@@ -451,6 +487,7 @@ inline VulkanContext createVulkanContext() {
     }
   }
 
+  PUTS("Creating logical device and retrieving graphics queue");
   VkDeviceQueueCreateInfo queueCreateInfo{};
   queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
   queueCreateInfo.queueFamilyIndex = ctx.queueFamilyIndex;
@@ -459,11 +496,13 @@ inline VulkanContext createVulkanContext() {
   queueCreateInfo.pQueuePriorities = &queuePriority;
 
   // Enable timeline semaphore feature (Vulkan 1.2 core)
+  PUTS("Enabling Vulkan Timeline Semaphore feature");
   VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures{};
   timelineFeatures.sType =
       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
   timelineFeatures.timelineSemaphore = VK_TRUE;
 
+  PUTS("Creating Vulkan logical device with required extensions and features");
   VkDeviceCreateInfo deviceCreateInfo{};
   deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
   deviceCreateInfo.pNext = &timelineFeatures;
@@ -479,6 +518,7 @@ inline VulkanContext createVulkanContext() {
                           &ctx.device));
   vkGetDeviceQueue(ctx.device, ctx.queueFamilyIndex, 0, &ctx.queue);
 
+  LEAVE;
   return ctx;
 }
 
@@ -503,6 +543,7 @@ inline ImageResources createExportableImage(
                               VK_IMAGE_USAGE_SAMPLED_BIT |
                               VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                               VK_IMAGE_USAGE_TRANSFER_DST_BIT) {
+  ENTER("createExportableImage", "VulkanContext&, VkExtent3D, VkFormat, VkImageType, VkImageTiling, VkImageUsageFlags");
   VkImageCreateInfo imageInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
   imageInfo.imageType = type;
   imageInfo.extent = extent;
@@ -553,10 +594,12 @@ inline ImageResources createExportableImage(
   VK_CHECK(vkAllocateMemory(ctx.device, &allocInfo, nullptr, &res.memory));
   VK_CHECK(vkBindImageMemory(ctx.device, res.image, res.memory, 0));
 
+  LEAVE;
   return res;
 }
 
 inline VkSemaphore createExportableSemaphore(VulkanContext &ctx) {
+  ENTER("createExportableSemaphore", "VulkanContext&");
   VkExportSemaphoreCreateInfo exportInfo{};
   exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO;
   exportInfo.handleTypes = PLATFORM_SEM_HANDLE_TYPE;
@@ -567,12 +610,14 @@ inline VkSemaphore createExportableSemaphore(VulkanContext &ctx) {
 
   VkSemaphore semaphore;
   VK_CHECK(vkCreateSemaphore(ctx.device, &semaphoreInfo, nullptr, &semaphore));
+  LEAVE;
   return semaphore;
 }
 
 inline VkSemaphore
 createExportableTimelineSemaphore(VulkanContext &ctx,
                                   uint64_t initialValue = 0) {
+  ENTER("createExportableTimelineSemaphore", "VulkanContext&, uint64_t");
   VkSemaphoreTypeCreateInfo typeInfo{};
   typeInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
   typeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
@@ -589,6 +634,7 @@ createExportableTimelineSemaphore(VulkanContext &ctx,
 
   VkSemaphore semaphore;
   VK_CHECK(vkCreateSemaphore(ctx.device, &semaphoreInfo, nullptr, &semaphore));
+  LEAVE;
   return semaphore;
 }
 
@@ -599,6 +645,7 @@ createExportableTimelineSemaphore(VulkanContext &ctx,
 inline BufferResources createExportableBuffer(
     VulkanContext &ctx, VkDeviceSize size, VkBufferUsageFlags usage,
     VkExternalMemoryHandleTypeFlagBits handleType = PLATFORM_MEM_HANDLE_TYPE) {
+  ENTER("createExportableBuffer", "VulkanContext&, VkDeviceSize, VkBufferUsageFlags, VkExternalMemoryHandleTypeFlagBits");
   VkExternalMemoryBufferCreateInfo extMemInfo{};
   extMemInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
   extMemInfo.handleTypes = handleType;
@@ -636,12 +683,14 @@ inline BufferResources createExportableBuffer(
 
   VK_CHECK(vkAllocateMemory(ctx.device, &allocInfo, nullptr, &res.memory));
   VK_CHECK(vkBindBufferMemory(ctx.device, res.buffer, res.memory, 0));
+  LEAVE;
   return res;
 }
 
 inline BufferResources createStagingBuffer(VulkanContext &ctx,
                                            VkDeviceSize size,
                                            VkBufferUsageFlags usage) {
+  ENTER("createStagingBuffer", "VulkanContext&, VkDeviceSize, VkBufferUsageFlags");
   BufferResources res;
   res.size = size;
 
@@ -664,6 +713,7 @@ inline BufferResources createStagingBuffer(VulkanContext &ctx,
 
   VK_CHECK(vkAllocateMemory(ctx.device, &allocInfo, nullptr, &res.memory));
   VK_CHECK(vkBindBufferMemory(ctx.device, res.buffer, res.memory, 0));
+  LEAVE;
   return res;
 }
 
@@ -779,12 +829,14 @@ template <typename Functor>
 inline void uploadImage(VulkanContext &ctx, ImageResources &imgRes,
                         int channels, VkSemaphore signalSemaphore,
                         Functor generator) {
+  ENTER("uploadImage", "VulkanContext&, ImageResources&, int, VkSemaphore, Functor");
   uint32_t width = imgRes.extent.width;
   uint32_t height = imgRes.extent.height;
   uint32_t depth = imgRes.extent.depth;
   size_t totalPixels = width * height * depth;
 
   // 1. Create Staging Buffer
+  PUTS("Creating staging buffer for data upload");
   VkBuffer stagingBuffer;
   VkDeviceMemory stagingMemory;
   VkDeviceSize dataSize = totalPixels * channels * 4; // Max safe size
@@ -805,6 +857,7 @@ inline void uploadImage(VulkanContext &ctx, ImageResources &imgRes,
   VK_CHECK(vkBindBufferMemory(ctx.device, stagingBuffer, stagingMemory, 0));
 
   // 2. Map and Fill
+  PUTS("Mapping staging buffer and filling with generated data");
   void *data;
   VK_CHECK(vkMapMemory(ctx.device, stagingMemory, 0, dataSize, 0, &data));
 
@@ -988,13 +1041,13 @@ inline bool verifyImage(VulkanContext &ctx, ImageResources &imgRes,
   for (size_t i = 0; i < totalPixels; ++i) {
     for (int c = 0; c < channels; ++c) {
       T actual = ptr[i * channels + c];
-      T expected = expectedGenerator(i, c);
+      T expect = expectedGenerator(i, c);
 
       bool match = false;
       if constexpr (std::is_floating_point_v<T>) {
-        match = std::abs((float)actual - (float)expected) < 0.05f;
+        match = std::abs((float)actual - (float)expect) < 0.05f;
       } else {
-        match = (actual == expected);
+        match = (actual == expect);
       }
 
       if (!match) {
@@ -1002,7 +1055,7 @@ inline bool verifyImage(VulkanContext &ctx, ImageResources &imgRes,
         if (errors++ < 5)
           std::cout << "Mismatch at " << i << " ch:" << c
                     << " Got: " << (double)actual
-                    << " Exp: " << (double)expected << std::endl;
+                    << " Exp: " << (double)expect << std::endl;
       }
     }
   }
@@ -1056,11 +1109,12 @@ inline bool uploadAndVerify(VulkanContext &ctx, ImageResources &imgRes,
   vkMapMemory(ctx.device, stagingBufferMemory, 0, imageSize, 0, &data);
   T *pixelData = (T *)data;
 
-  for (size_t i = 0; i < totalPixels; i++) {
-    for (int c = 0; c < channels; ++c) {
-      pixelData[i * channels + c] = generateTestValue<T>(i, c, totalPixels);
+  for (size_t i = 0, idx = 0; i < totalPixels; i++) {
+    for (int c = 0; c < channels; ++c, ++idx) {
+      pixelData[idx] = generateTestValue<T>(i, c);
     }
   }
+  printImg(pixelData, texWidth, texHeight, channels);
   vkUnmapMemory(ctx.device, stagingBufferMemory);
 
   // COPY TO IMAGE
@@ -1182,17 +1236,18 @@ inline bool uploadAndVerify(VulkanContext &ctx, ImageResources &imgRes,
   T *checkData = (T *)data;
 
   bool valid = true;
-  for (size_t i = 0; i < totalPixels * channels; i++) {
-    size_t pixelIdx = i / channels;
-    int channelIdx = i % channels;
-    T expected = generateTestValue<T>(pixelIdx, channelIdx, totalPixels);
+  for (size_t i = 0, idx = 0; i < totalPixels; i++) {
+    for (int c = 0; c < channels; ++c, ++idx) {
+      T expect = generateTestValue<T>(i, c);
+      T actual = checkData[idx];
 
-    if (!checkValue(checkData[i], expected)) {
-      valid = false;
-      // Uncomment for debugging
-      // std::cout << "RoundTrip Mismatch: " << (float)checkData[i] << " != " <<
-      // (float)expected << std::endl;
-      break;
+      if (!checkValue(actual, expect)) {
+        valid = false;
+        // Uncomment for debugging
+        // std::cout << "RoundTrip Mismatch: " << (float)checkData[idx] << " != " <<
+        // (float)expect << std::endl;
+        break;
+      }
     }
   }
   vkUnmapMemory(ctx.device, stagingBufferMemory);

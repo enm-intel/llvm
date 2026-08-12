@@ -436,7 +436,7 @@ int runTest(
     int errorCount = 0;
 
     for (size_t i = 0; i < totalValues; ++i) {
-      T expected = generateTestValue<T>(i / channels, i % channels, width);
+      T expected = generateTestValue<T>(i / channels, i % channels);
 
       if (!checkValue(hostAcc[i], expected)) {
         passed = false;

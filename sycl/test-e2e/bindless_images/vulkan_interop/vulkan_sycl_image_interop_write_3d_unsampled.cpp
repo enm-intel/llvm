@@ -230,31 +230,30 @@ int runTest(
             int y = item.get_id(1);
             int z = item.get_id(0);
             size_t index = z * width * height + y * width + x;
-            size_t totalPixels = width * height * depth;
 
             // unorm is special snowflake
             bool isUnorm = (syclType == sycl::image_channel_type::unorm_int8);
             if (isUnorm) {
               if (channels == 1) {
                 float v =
-                    (float)generateTestValue<T>(index, 0, totalPixels) / 255.0f;
+                    (float)generateTestValue<T>(index, 0) / 255.0f;
                 syclexp::write_image(unsampledHandle, sycl::int3(x, y, z), v);
               } else if (channels == 2) {
                 float v1 =
-                    (float)generateTestValue<T>(index, 0, totalPixels) / 255.0f;
+                    (float)generateTestValue<T>(index, 0) / 255.0f;
                 float v2 =
-                    (float)generateTestValue<T>(index, 1, totalPixels) / 255.0f;
+                    (float)generateTestValue<T>(index, 1) / 255.0f;
                 syclexp::write_image(unsampledHandle, sycl::int3(x, y, z),
                                      sycl::float2(v1, v2));
               } else { // 4
                 float v1 =
-                    (float)generateTestValue<T>(index, 0, totalPixels) / 255.0f;
+                    (float)generateTestValue<T>(index, 0) / 255.0f;
                 float v2 =
-                    (float)generateTestValue<T>(index, 1, totalPixels) / 255.0f;
+                    (float)generateTestValue<T>(index, 1) / 255.0f;
                 float v3 =
-                    (float)generateTestValue<T>(index, 2, totalPixels) / 255.0f;
+                    (float)generateTestValue<T>(index, 2) / 255.0f;
                 float v4 =
-                    (float)generateTestValue<T>(index, 3, totalPixels) / 255.0f;
+                    (float)generateTestValue<T>(index, 3) / 255.0f;
                 syclexp::write_image(unsampledHandle, sycl::int3(x, y, z),
                                      sycl::float4(v1, v2, v3, v4));
               }
@@ -262,19 +261,19 @@ int runTest(
             }
 
             if (channels == 1) {
-              T val = generateTestValue<T>(index, 0, totalPixels);
+              T val = generateTestValue<T>(index, 0);
               syclexp::write_image(unsampledHandle, sycl::int3(x, y, z), val);
             } else if (channels == 2) {
               using Vec2 = sycl::vec<T, 2>;
-              Vec2 px(generateTestValue<T>(index, 0, totalPixels),
-                      generateTestValue<T>(index, 1, totalPixels));
+              Vec2 px(generateTestValue<T>(index, 0),
+                      generateTestValue<T>(index, 1));
               syclexp::write_image(unsampledHandle, sycl::int3(x, y, z), px);
             } else {
               using Vec4 = sycl::vec<T, 4>;
-              Vec4 px(generateTestValue<T>(index, 0, totalPixels),
-                      generateTestValue<T>(index, 1, totalPixels),
-                      generateTestValue<T>(index, 2, totalPixels),
-                      generateTestValue<T>(index, 3, totalPixels));
+              Vec4 px(generateTestValue<T>(index, 0),
+                      generateTestValue<T>(index, 1),
+                      generateTestValue<T>(index, 2),
+                      generateTestValue<T>(index, 3));
               syclexp::write_image(unsampledHandle, sycl::int3(x, y, z), px);
             }
           });
@@ -356,7 +355,7 @@ int runTest(
     size_t totalPixels = width * height * depth;
     for (size_t i = 0; i < totalPixels * channels; ++i) {
       T expected =
-          generateTestValue<T>(i / channels, i % channels, totalPixels);
+          generateTestValue<T>(i / channels, i % channels);
       if (!checkValue(vData[i], expected)) {
         passed = false;
         if (errorCount++ < 5)
